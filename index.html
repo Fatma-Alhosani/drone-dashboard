@@ -1,73 +1,23 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8" />
   <title>Drone Dashboard</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #111;
-      color: white;
-    }
-    header {
-      background: #000;
-      padding: 15px 30px;
-      font-size: 20px;
-      font-weight: bold;
-      display: flex;
-      justify-content: space-between;
-    }
-    .container {
-      display: flex;
-      justify-content: space-around;
-      margin: 40px;
-    }
-    .card {
-      background: #1e1e1e;
-      border-radius: 10px;
-      padding: 20px;
-      width: 40%;
-      box-shadow: 0 0 10px rgba(0,0,0,0.5);
-    }
-    .card h2 {
-      margin-top: 0;
-    }
-    .feed img {
-      width: 100%;
-      border-radius: 10px;
-    }
-    .alert-box {
-      background: #c62828;
-      padding: 15px;
-      border-radius: 8px;
-      font-weight: bold;
-      margin-bottom: 15px;
-    }
-    .map {
-      background: #333;
-      height: 200px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 10px;
-    }
-    .button-container {
-      text-align: center;
-      margin-top: 20px;
-    }
-    .button {
-      background: #333;
-      border: none;
-      color: white;
-      padding: 15px 40px;
-      font-size: 16px;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    .button:hover {
-      background: #444;
-    }
+    body { margin:0; font-family:Arial,sans-serif; background:#111; color:#fff; }
+    header { background:#000; padding:15px 30px; font-size:20px; font-weight:bold; display:flex; justify-content:space-between; }
+    .container { display:flex; justify-content:space-around; margin:40px; gap:30px; flex-wrap:wrap; }
+    .card { background:#1e1e1e; border-radius:10px; padding:20px; width:min(560px, 100%); box-shadow:0 0 10px rgba(0,0,0,.5); }
+    .card h2 { margin:0 0 12px; }
+    .feed img { width:100%; border-radius:10px; display:block; }
+    .alert-box { background:#c62828; padding:15px; border-radius:8px; font-weight:bold; margin-bottom:15px; white-space:pre-line; }
+    .map { background:#333; height:200px; display:flex; align-items:center; justify-content:center; border-radius:10px; }
+    .button-container { text-align:center; margin:20px 40px 60px; }
+    .button { background:#333; border:none; color:#fff; padding:15px 40px; font-size:16px; border-radius:5px; cursor:pointer; }
+    .button:hover { background:#444; }
   </style>
 </head>
 <body>
@@ -80,27 +30,46 @@
     <!-- Feed Card -->
     <div class="card feed">
       <h2>Feed</h2>
-      <img src="https://via.placeholder.com/400x250.png?text=Feed+Image" alt="Feed Image">
+      <img id="feedImg" alt="Feed Image">
     </div>
 
     <!-- Alerts Card -->
     <div class="card alerts">
       <h2>Detection Alerts</h2>
-      <div class="alert-box">
-        SMOKING DETECTED <br>
-        34.052222, -118.2437 <br>
-        2024-07-25 11:32:00
-      </div>
+      <div class="alert-box" id="coordsBox">Loading detection data...</div>
       <div class="map">📍 Map Preview</div>
     </div>
   </div>
 
   <div class="button-container">
-    <button class="button">DOWNLOAD LOG</button>
+    <a href="database.txt" download>
+      <button class="button">DOWNLOAD LOG</button>
+    </a>
   </div>
+
+  <script>
+    // ---- image cache-busting (replaces the PHP) ----
+    const feedImg = document.getElementById('feedImg');
+    function refreshFeed() {
+      feedImg.src = 'feed.jpg?nocache=' + Date.now();
+    }
+    refreshFeed();                   // load now
+    setInterval(refreshFeed, 15000); // refresh every 15s (optional)
+
+    // ---- load detection text (coords.txt) ----
+    const box = document.getElementById('coordsBox');
+    async function loadCoords() {
+      try {
+        const res = await fetch('coords.txt', { cache: 'no-store' });
+        if (!res.ok) throw new Error(res.statusText);
+        const text = (await res.text()).trim();
+        box.textContent = text || 'No data available';
+      } catch {
+        box.textContent = 'No data available';
+      }
+    }
+    loadCoords();
+    setInterval(loadCoords, 5000); // periodically refresh (optional)
+  </script>
 </body>
 </html>
-
-
-
-
