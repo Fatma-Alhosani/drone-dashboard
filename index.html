@@ -69,6 +69,10 @@
             background: #333;
             padding: 4px 10px;
             border-radius: 4px;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         .feed-container {
             position: relative;
@@ -190,6 +194,17 @@
         .control-btn:hover {
             background: #444;
         }
+        .gps-info {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
+        }
+        .gps-filename {
+            font-size: 12px;
+            color: #888;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -225,7 +240,10 @@
         <div class="card alerts">
             <div class="card-header">
                 <h2>Detection Alerts</h2>
-                <div class="filename" id="gpsCount">10 coordinates</div>
+                <div class="gps-info">
+                    <div class="filename" id="gpsCount">10 coordinates</div>
+                    <div class="gps-filename" id="gpsFilename">GPSTEST.txt</div>
+                </div>
             </div>
             <div class="alert-box" id="coordsBox">
                 <div style="display: flex; justify-content: space-between;">
@@ -244,7 +262,7 @@
             <div class="controls">
                 <button class="control-btn" onclick="previousCoordinate()">Previous</button>
                 <button class="control-btn" onclick="nextCoordinate()">Next</button>
-                <button class="control-btn" onclick="toggleAutoCycle()">Auto-Cycle: OFF</button>
+                <button class="control-btn" id="autoCycleBtn" onclick="toggleAutoCycle()">Auto-Cycle: OFF</button>
             </div>
             
             <div class="status-bar">
@@ -276,6 +294,8 @@
         const coordinatesListEl = document.getElementById('coordinatesList');
         const currentCoordEl = document.getElementById('currentCoord');
         const gpsCountEl = document.getElementById('gpsCount');
+        const gpsFilenameEl = document.getElementById('gpsFilename');
+        const autoCycleBtn = document.getElementById('autoCycleBtn');
         
         // GPS data
         let gpsCoordinates = [];
@@ -317,6 +337,7 @@
                     displayCoordinatesList();
                     updateMapMarker(0);
                     gpsCountEl.textContent = `${gpsCoordinates.length} coordinates`;
+                    gpsFilenameEl.textContent = 'GPSTEST.txt';
                     coordsStatusEl.textContent = 'GPS data loaded';
                 } else {
                     coordsStatusEl.textContent = 'No coordinates found';
@@ -326,6 +347,7 @@
                 
             } catch (error) {
                 coordsStatusEl.textContent = 'Error loading GPS data';
+                gpsFilenameEl.textContent = 'Error loading file';
                 console.error('Error loading GPS coordinates:', error);
             }
         }
@@ -373,16 +395,14 @@
         
         // Toggle auto-cycle of coordinates
         function toggleAutoCycle() {
-            const toggleBtn = document.querySelector('.control-btn:nth-child(3)');
-            
             if (autoCycleEnabled) {
                 clearInterval(autoCycleInterval);
                 autoCycleEnabled = false;
-                toggleBtn.textContent = 'Auto-Cycle: OFF';
+                autoCycleBtn.textContent = 'Auto-Cycle: OFF';
             } else {
                 autoCycleInterval = setInterval(nextCoordinate, 3000);
                 autoCycleEnabled = true;
-                toggleBtn.textContent = 'Auto-Cycle: ON';
+                autoCycleBtn.textContent = 'Auto-Cycle: ON';
             }
         }
         
