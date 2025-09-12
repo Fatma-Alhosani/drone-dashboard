@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Drone Dashboard</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: white;
+    }
+    header {
+      background: #000;
+      padding: 15px 30px;
+      font-size: 20px;
+      font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+    }
+    .container {
+      display: flex;
+      justify-content: space-around;
+      margin: 40px;
+    }
+    .card {
+      background: #1e1e1e;
+      border-radius: 10px;
+      padding: 20px;
+      width: 40%;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    }
+    .card h2 {
+      margin-top: 0;
+    }
+    .feed img {
+      width: 100%;
+      border-radius: 10px;
+    }
+    .alert-box {
+      background: #c62828;
+      padding: 15px;
+      border-radius: 8px;
+      font-weight: bold;
+      margin-bottom: 15px;
+      white-space: pre-line; /* keeps newlines from coords.txt */
+    }
+    .map {
+      background: #333;
+      height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+    }
+    .button-container {
+      text-align: center;
+      margin-top: 20px;
+    }
+    .button {
+      background: #333;
+      border: none;
+      color: white;
+      padding: 15px 40px;
+      font-size: 16px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .button:hover {
+      background: #444;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>DASHBOARD</div>
+    <div>LOGS</div>
+  </header>
+
+  <div class="container">
+    <!-- Feed Card -->
+    <div class="card feed">
+      <h2>Feed</h2>
+      <!-- Always show latest uploaded feed.jpg -->
+      <img src="feed.jpg?nocache=<?php echo time(); ?>" alt="Feed Image">
+    </div>
+
+    <!-- Alerts Card -->
+    <div class="card alerts">
+      <h2>Detection Alerts</h2>
+      <div class="alert-box" id="coordsBox">
+        Loading detection data...
+      </div>
+      <div class="map">📍 Map Preview</div>
+    </div>
+  </div>
+
+  <div class="button-container">
+    <a href="database.txt" download>
+      <button class="button">DOWNLOAD LOG</button>
+    </a>
+  </div>
+
+  <script>
+    // Fetch coords.txt and put inside the red alert box
+    fetch('coords.txt')
+      .then(response => response.text())
+      .then(text => {
+        document.getElementById('coordsBox').innerText = text.trim();
+      })
+      .catch(err => {
+        document.getElementById('coordsBox').innerText = "No data available";
+      });
+  </script>
+</body>
+</html>
