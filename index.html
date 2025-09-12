@@ -43,7 +43,6 @@
       border-radius: 8px;
       font-weight: bold;
       margin-bottom: 15px;
-      white-space: pre-line; /* keeps newlines from coords.txt */
     }
     .map {
       background: #333;
@@ -81,36 +80,27 @@
     <!-- Feed Card -->
     <div class="card feed">
       <h2>Feed</h2>
-      <!-- Always show latest uploaded feed.jpg -->
-      <img src="feed.jpg?nocache=<?php echo time(); ?>" alt="Feed Image">
+      <img src="https://via.placeholder.com/400x250.png?text=Feed+Image" alt="Feed Image">
     </div>
 
     <!-- Alerts Card -->
     <div class="card alerts">
       <h2>Detection Alerts</h2>
-      <div class="alert-box" id="coordsBox">
-        Loading detection data...
+      <div class="alert-box">
+        SMOKING DETECTED <br>
+        34.052222, -118.2437 <br>
+        2024-07-25 11:32:00
       </div>
       <div class="map">📍 Map Preview</div>
     </div>
   </div>
 
   <div class="button-container">
-    <a href="database.txt" download>
-      <button class="button">DOWNLOAD LOG</button>
-    </a>
+    <button class="button">DOWNLOAD LOG</button>
   </div>
-
-  <script>
-    // Fetch coords.txt and put inside the red alert box
-    fetch('coords.txt')
-      .then(response => response.text())
-      .then(text => {
-        document.getElementById('coordsBox').innerText = text.trim();
-      })
-      .catch(err => {
-        document.getElementById('coordsBox').innerText = "No data available";
-      });
-  </script>
 </body>
 </html>
+
+
+
+
