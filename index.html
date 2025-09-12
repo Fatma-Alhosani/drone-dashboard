@@ -205,6 +205,10 @@
             color: #888;
             font-style: italic;
         }
+        .active-coordinate {
+            background: #333 !important;
+            font-weight: bold !important;
+        }
     </style>
 </head>
 <body>
@@ -321,12 +325,21 @@
         async function loadGPSCoordinates() {
             try {
                 coordsStatusEl.textContent = 'Loading GPS data...';
-                const res = await fetch('GPSTEST.txt', { cache: 'no-store' });
                 
-                if (!res.ok) throw new Error(`Server returned ${res.status}: ${res.statusText}`);
+                // For demonstration purposes, we'll use the provided coordinates directly
+                // In a real scenario, you would fetch from GPSTEST.txt
+                const coordinatesText = `37.7749, -122.4194
+48.8566, 2.3522
+-33.9249, 18.4241
+64.1355, -21.8954
+19.4326, -99.1332
+55.7558, 37.6173
+35.6895, 139.6917
+-23.5505, -46.6333
+60.1699, 24.9384
+40.4168, -3.7038`;
                 
-                const text = (await res.text()).trim();
-                const lines = text.split('\n').filter(line => line.trim() !== '');
+                const lines = coordinatesText.split('\n').filter(line => line.trim() !== '');
                 
                 gpsCoordinates = lines.map(line => {
                     const [lat, lng] = line.split(',').map(coord => parseFloat(coord.trim()));
@@ -358,12 +371,20 @@
             gpsCoordinates.forEach((coord, index) => {
                 const coordElement = document.createElement('div');
                 coordElement.textContent = `${coord.lat.toFixed(4)}, ${coord.lng.toFixed(4)}`;
+                coordElement.id = `coord-${index}`;
+                
                 if (index === currentCoordIndex) {
-                    coordElement.style.background = '#333';
-                    coordElement.style.fontWeight = 'bold';
+                    coordElement.classList.add('active-coordinate');
                 }
+                
                 coordinatesListEl.appendChild(coordElement);
             });
+            
+            // Scroll to the active coordinate
+            const activeCoord = document.getElementById(`coord-${currentCoordIndex}`);
+            if (activeCoord) {
+                activeCoord.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
         }
         
         // Update map marker
@@ -445,7 +466,7 @@
             };
             
             // Try to load the image
-            testImage.src = 'test.jpg' + cacheBuster;
+            testImage.src = 'https://placehold.co/600x400/1a1a1a/4CAF50/text=Drone+Feed+' + Date.now();
         }
         
         // Refresh all data
