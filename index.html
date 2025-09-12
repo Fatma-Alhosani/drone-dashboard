@@ -48,9 +48,8 @@
   </div>
 
   <script>
-   <script>
   // ---- image cache-busting (replaces the PHP) ----
-  const feedImg = document.getElementById('feedImg');
+  const feedImg = document.getElementById('test.jpg');
   function refreshFeed() {
     feedImg.src = 'test.jpg?nocache=' + Date.now();   // 👈 updated to test.jpg
   }
@@ -75,4 +74,5 @@
 
 </body>
 </html>
+
 
