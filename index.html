@@ -48,28 +48,31 @@
   </div>
 
   <script>
-    // ---- image cache-busting (replaces the PHP) ----
-    const feedImg = document.getElementById('feedImg');
-    function refreshFeed() {
-      feedImg.src = 'feed.jpg?nocache=' + Date.now();
-    }
-    refreshFeed();                   // load now
-    setInterval(refreshFeed, 15000); // refresh every 15s (optional)
+   <script>
+  // ---- image cache-busting (replaces the PHP) ----
+  const feedImg = document.getElementById('feedImg');
+  function refreshFeed() {
+    feedImg.src = 'test.jpg?nocache=' + Date.now();   // 👈 updated to test.jpg
+  }
+  refreshFeed();                   // load now
+  setInterval(refreshFeed, 15000); // refresh every 15s (optional)
 
-    // ---- load detection text (coords.txt) ----
-    const box = document.getElementById('coordsBox');
-    async function loadCoords() {
-      try {
-        const res = await fetch('coords.txt', { cache: 'no-store' });
-        if (!res.ok) throw new Error(res.statusText);
-        const text = (await res.text()).trim();
-        box.textContent = text || 'No data available';
-      } catch {
-        box.textContent = 'No data available';
-      }
+  // ---- load detection text (coords.txt) ----
+  const box = document.getElementById('coordsBox');
+  async function loadCoords() {
+    try {
+      const res = await fetch('coords.txt', { cache: 'no-store' });
+      if (!res.ok) throw new Error(res.statusText);
+      const text = (await res.text()).trim();
+      box.textContent = text || 'No data available';
+    } catch {
+      box.textContent = 'No data available';
     }
-    loadCoords();
-    setInterval(loadCoords, 5000); // periodically refresh (optional)
-  </script>
+  }
+  loadCoords();
+  setInterval(loadCoords, 5000); // periodically refresh (optional)
+</script>
+
 </body>
 </html>
+
