@@ -244,12 +244,6 @@
             font-size: 12px;
             color: #666;
         }
-        .download-status {
-            text-align: center;
-            margin-top: 10px;
-            font-size: 14px;
-            color: #4CAF50;
-        }
     </style>
 </head>
 <body>
@@ -260,7 +254,6 @@
             <span id="connectionStatus">OPERATIONAL</span>
         </div>
     </header>
-
     <div class="container">
         <!-- Feed Card -->
         <div class="card feed">
@@ -283,16 +276,12 @@
             
             <div class="image-counter" id="imageCounter">Image 0 of 0</div>
             
-            <div class="github-info">
-                Loading images from: Fatma-Alhosani/drone-dashboard/photos
-            </div>
             
             <div class="status-bar">
                 <span class="last-updated" id="lastUpdated">Last updated: --:--:--</span>
                 <span id="imageStatus">Loading images from GitHub...</span>
             </div>
         </div>
-
         <!-- Alerts Card -->
         <div class="card alerts">
             <div class="card-header">
@@ -328,15 +317,11 @@
             </div>
         </div>
     </div>
-
     <div class="button-container">
         <button class="button" onclick="downloadLog()">DOWNLOAD LOG</button>
         <button class="button refresh" onclick="refreshAll()">MANUAL REFRESH</button>
         <button class="button" onclick="reloadGitHubPhotos()">RELOAD IMAGES</button>
     </div>
-
-    <div class="download-status" id="downloadStatus"></div>
-
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
         // DOM elements
@@ -355,7 +340,6 @@
         const gpsFilenameEl = document.getElementById('gpsFilename');
         const autoCycleBtn = document.getElementById('autoCycleBtn');
         const imageCounterEl = document.getElementById('imageCounter');
-        const downloadStatusEl = document.getElementById('downloadStatus');
         
         // GitHub configuration (hardcoded as requested)
         const githubRepo = "Fatma-Alhosani/drone-dashboard";
@@ -385,59 +369,10 @@
             element.textContent = `Last updated: ${timeString}`;
         }
         
-        // Download log function
-        function downloadLog() {
-            try {
-                // Create log content
-                const now = new Date();
-                const dateString = now.toLocaleDateString();
-                const timeString = now.toLocaleTimeString();
-                
-                let logContent = `DRONE SURVEILLANCE LOG\n`;
-                logContent += `Generated: ${dateString} ${timeString}\n\n`;
-                logContent += `CURRENT GPS LOCATION:\n`;
-                logContent += `${currentCoordEl.textContent}\n\n`;
-                logContent += `ALL GPS COORDINATES:\n`;
-                
-                gpsCoordinates.forEach((coord, index) => {
-                    logContent += `${index + 1}. ${coord.lat.toFixed(6)}, ${coord.lng.toFixed(6)}\n`;
-                });
-                
-                logContent += `\nCURRENT IMAGE: ${filenameDisplayEl.textContent}\n`;
-                logContent += `IMAGE INDEX: ${currentImageIndex + 1} of ${availableImages.length}\n`;
-                
-                // Create a Blob with the log content
-                const blob = new Blob([logContent], { type: 'text/plain' });
-                const url = URL.createObjectURL(blob);
-                
-                // Create a temporary anchor element to trigger the download
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `drone_log_${now.getTime()}.txt`;
-                document.body.appendChild(a);
-                a.click();
-                
-                // Clean up
-                setTimeout(() => {
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                    downloadStatusEl.textContent = 'Log downloaded successfully!';
-                    setTimeout(() => {
-                        downloadStatusEl.textContent = '';
-                    }, 3000);
-                }, 100);
-                
-            } catch (error) {
-                console.error('Error downloading log:', error);
-                downloadStatusEl.textContent = 'Error downloading log';
-                downloadStatusEl.style.color = '#F44336';
-            }
-        }
-        
         // Load images from GitHub repository
         async function loadGitHubPhotos() {
             feedPlaceholder.style.display = 'flex';
-            feedPlaceholder.innerHTML = '<div class="loading-spinner"></div><div>Loading images from GitHub...</div>';
+            feedPlaceholder.innerHTML = '<div class="loading-spinner"></div>';
             imageStatusEl.textContent = 'Fetching image list from GitHub...';
             
             try {
@@ -483,9 +418,14 @@
                         </div>
                     </div>
                 `;
+                feedImg.style.display = 'none';
                 imageStatusEl.textContent = 'Error loading images from GitHub';
                 connectionStatusEl.textContent = 'CONNECTION ISSUE';
                 document.querySelector('.status-dot').style.background = '#F44336';
+                
+                // Update filename display
+                filenameDisplayEl.textContent = 'Image not available';
+                imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
             }
         }
         
@@ -577,6 +517,7 @@
             if (gpsCoordinates.length === 0) return;
             currentCoordIndex = (currentCoordIndex + 1) % gpsCoordinates.length;
             updateMapMarker(currentCoordIndex);
+            updateTimestamp(coordsUpdatedEl);
         }
         
         // Navigate to previous coordinate
@@ -584,6 +525,7 @@
             if (gpsCoordinates.length === 0) return;
             currentCoordIndex = (currentCoordIndex - 1 + gpsCoordinates.length) % gpsCoordinates.length;
             updateMapMarker(currentCoordIndex);
+            updateTimestamp(coordsUpdatedEl);
         }
         
         // Toggle auto-cycle of coordinates
@@ -672,7 +614,64 @@
             }
             loadGPSCoordinates();
         }
-        
+
+        // New function to generate and download log file
+        function downloadLog() {
+            // Collect log data
+            let logContent = "Drone Surveillance Logs\n";
+            logContent += "=======================\n\n";
+            
+            // Add current timestamp
+            const now = new Date();
+            logContent += `Generated at: ${now.toLocaleString()}\n\n`;
+            
+            // Add GPS coordinates section
+            logContent += "GPS Coordinates (from GPSTEST.txt):\n";
+            logContent += `Total coordinates: ${gpsCoordinates.length}\n`;
+            gpsCoordinates.forEach(coord => {
+                logContent += `Latitude: ${coord.lat.toFixed(4)}, Longitude: ${coord.lng.toFixed(4)}\n`;
+            });
+            logContent += '\n';
+            
+            // Add image information section
+            logContent += "Available Images (from GitHub):\n";
+            logContent += `Total images: ${availableImages.length}\n`;
+            if (availableImages.length > 0) {
+                availableImages.forEach(img => {
+                    logContent += `Filename: ${img.name}, URL: ${img.url}, Path: ${img.path}\n`;
+                });
+            } else {
+                logContent += "No images available\n";
+            }
+            logContent += '\n';
+            
+            // Add current state information
+            logContent += "Current State:\n";
+            logContent += `Current GPS Coordinate Index: ${currentCoordIndex}\n`;
+            logContent += `Current Image Index: ${currentImageIndex}\n`;
+            logContent += `Auto-Cycle Enabled: ${autoCycleEnabled ? 'ON' : 'OFF'}\n`;
+            logContent += `Connection Status: ${connectionStatusEl.textContent}\n`;
+            
+            // Create Blob and trigger download
+            const blob = new Blob([logContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            
+            // Create temporary link element
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'database.txt';
+            
+            // Append to body and simulate click
+            document.body.appendChild(link);
+            link.click();
+            
+            // Cleanup: Remove link and revoke URL
+            setTimeout(() => {
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }, 0);
+        }
+
         // Initialize and set intervals
         window.onload = function() {
             loadGPSCoordinates();
