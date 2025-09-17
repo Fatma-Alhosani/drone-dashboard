@@ -47,7 +47,7 @@
             background: #1e1e1e;
             border-radius: 10px;
             padding: 20px;
-            width: min(700px, 90%);  /* Improved responsiveness and width */
+            width: min(550px, 85%);  /* Reduced max width to 550px (from 700px) */
             box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
         }
         .card-header {
@@ -77,23 +77,23 @@
         .feed-container {
             position: relative;
             width: 100%;
-            padding-top: 56.25%;  /* 16:9 aspect ratio for balanced image display */
+            padding-top: 40%;  /* Reduced to 40% (shorter height) */
             border-radius: 10px;
             overflow: hidden;
-            margin-bottom: 15px;  /* Adds space below the feed container */
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);  /* Subtle shadow for depth */
+            margin-bottom: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
         }
         .feed img {
             width: 100%;
             height: 100%;
-            object-fit: contain;  /* Maintains image aspect ratio */
-            position: absolute;    /* Ensures image fills container */
+            object-fit: contain;
+            position: absolute;
             top: 0;
             left: 0;
             border-radius: 10px;
             display: block;
             transition: opacity 0.3s;
-            z-index: 1;           /* Ensures image appears above placeholder */
+            z-index: 1;
         }
         .feed-placeholder {
             position: absolute;
@@ -108,7 +108,7 @@
             color: #888;
             border-radius: 10px;
             flex-direction: column;
-            padding: 20px;  /* More spacing inside placeholder */
+            padding: 15px;  /* Slightly reduced padding */
         }
         .alert-box {
             background: #c62828;
@@ -146,7 +146,7 @@
             display: flex;
             justify-content: center;
             gap: 15px;
-            padding-top: 20px;  /* Adds space above buttons */
+            padding-top: 20px;
         }
         .button {
             background: #333;
@@ -226,11 +226,11 @@
             display: flex;
             justify-content: center;
             gap: 10px;
-            margin-top: 15px;
+            margin-top: 10px;  /* Reduced margin for tighter layout */
         }
         .image-counter {
             text-align: center;
-            margin-top: 10px;
+            margin-top: 5px;  /* Reduced margin for tighter layout */
             font-size: 14px;
             color: #aaa;
         }
@@ -347,9 +347,9 @@
         const gpsCountEl = document.getElementById('gpsCount');
         const gpsFilenameEl = document.getElementById('gpsFilename');
         const autoCycleBtn = document.getElementById('autoCycleBtn');
-        const imageCounterEl = document.getElementById('imageCounter');
+        const imageCounterEl = document.getElementById('image-counter'); // Note: Updated ID if needed
         
-        // GitHub configuration (hardcoded as requested)
+        // GitHub configuration
         const githubRepo = "Fatma-Alhosani/drone-dashboard";
         const photosPath = "photos";
         
@@ -370,14 +370,14 @@
         }).addTo(map);
         const marker = L.marker([37.7749, -122.4194]).addTo(map);
         
-        // Function to update timestamp
+        // Update timestamp function
         function updateTimestamp(element) {
             const now = new Date();
             const timeString = now.toLocaleTimeString();
             element.textContent = `Last updated: ${timeString}`;
         }
         
-        // Load images from GitHub repository
+        // Load images from GitHub
         async function loadGitHubPhotos() {
             feedPlaceholder.style.display = 'flex';
             feedPlaceholder.innerHTML = '<div class="loading-spinner"></div>';
@@ -387,25 +387,14 @@
                 const apiUrl = `https://api.github.com/repos/${githubRepo}/contents/${photosPath}`;
                 const response = await fetch(apiUrl);
                 
-                if (!response.ok) {
-                    throw new Error(`GitHub API error: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
                 
                 const data = await response.json();
                 availableImages = data
-                    .filter(item => 
-                        item.type === 'file' && 
-                        /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(item.name)
-                    )
-                    .map(item => ({
-                        name: item.name,
-                        url: item.download_url,
-                        path: item.path
-                    }));
+                    .filter(item => item.type === 'file' && /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(item.name))
+                    .map(item => ({ name: item.name, url: item.download_url, path: item.path }));
                 
-                if (availableImages.length === 0) {
-                    throw new Error('No images found in the specified folder');
-                }
+                if (availableImages.length === 0) throw new Error('No images found in the specified folder');
                 
                 currentImageIndex = 0;
                 loadImage(availableImages[currentImageIndex]);
@@ -432,12 +421,12 @@
             }
         }
         
-        // Reload GitHub photos
+        // Reload images
         function reloadGitHubPhotos() {
             loadGitHubPhotos();
         }
         
-        // Load GPS coordinates from file
+        // Load GPS coordinates
         async function loadGPSCoordinates() {
             try {
                 coordsStatusEl.textContent = 'Loading GPS data...';
@@ -478,25 +467,19 @@
             }
         }
         
-        // Display coordinates in the list
+        // Display coordinates list
         function displayCoordinatesList() {
             coordinatesListEl.innerHTML = '';
             gpsCoordinates.forEach((coord, index) => {
                 const coordElement = document.createElement('div');
                 coordElement.textContent = `${coord.lat.toFixed(4)}, ${coord.lng.toFixed(4)}`;
                 coordElement.id = `coord-${index}`;
-                
-                if (index === currentCoordIndex) {
-                    coordElement.classList.add('active-coordinate');
-                }
-                
+                if (index === currentCoordIndex) coordElement.classList.add('active-coordinate');
                 coordinatesListEl.appendChild(coordElement);
             });
             
             const activeCoord = document.getElementById(`coord-${currentCoordIndex}`);
-            if (activeCoord) {
-                activeCoord.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
+            if (activeCoord) activeCoord.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
         
         // Update map marker
@@ -507,19 +490,16 @@
             map.setView([coord.lat, coord.lng], 13);
             marker.setLatLng([coord.lat, coord.lng]);
             currentCoordEl.textContent = `${coord.lat.toFixed(4)}, ${coord.lng.toFixed(4)}`;
-            
             displayCoordinatesList();
         }
         
-        // Navigate to next coordinate
+        // Next/Previous coordinate
         function nextCoordinate() {
             if (gpsCoordinates.length === 0) return;
             currentCoordIndex = (currentCoordIndex + 1) % gpsCoordinates.length;
             updateMapMarker(currentCoordIndex);
             updateTimestamp(coordsUpdatedEl);
         }
-        
-        // Navigate to previous coordinate
         function previousCoordinate() {
             if (gpsCoordinates.length === 0) return;
             currentCoordIndex = (currentCoordIndex - 1 + gpsCoordinates.length) % gpsCoordinates.length;
@@ -527,7 +507,7 @@
             updateTimestamp(coordsUpdatedEl);
         }
         
-        // Toggle auto-cycle of coordinates
+        // Toggle auto-cycle
         function toggleAutoCycle() {
             if (autoCycleEnabled) {
                 clearInterval(autoCycleInterval);
@@ -540,21 +520,19 @@
             }
         }
         
-        // Navigate to next image
+        // Next/Previous image
         function nextImage() {
             if (availableImages.length === 0) return;
             currentImageIndex = (currentImageIndex + 1) % availableImages.length;
             loadImage(availableImages[currentImageIndex]);
         }
-        
-        // Navigate to previous image
         function previousImage() {
             if (availableImages.length === 0) return;
             currentImageIndex = (currentImageIndex - 1 + availableImages.length) % availableImages.length;
             loadImage(availableImages[currentImageIndex]);
         }
         
-        // Load a specific image
+        // Load specific image
         function loadImage(imageInfo) {
             feedPlaceholder.style.display = 'flex';
             feedImg.style.display = 'none';
@@ -563,7 +541,7 @@
             const testImage = new Image();
             const cacheBuster = '?nocache=' + Date.now();
             
-            testImage.onload = function() {
+            testImage.onload = () => {
                 feedImg.src = testImage.src;
                 feedImg.style.display = 'block';
                 feedPlaceholder.style.display = 'none';
@@ -576,7 +554,7 @@
                 imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
             };
             
-            testImage.onerror = function() {
+            testImage.onerror = () => {
                 feedPlaceholder.innerHTML = `
                     <div class="placeholder-image">
                         <div style="font-size: 18px; margin-bottom: 10px;">⚠️ Image Not Available</div>
@@ -601,21 +579,18 @@
         
         // Refresh all data
         function refreshAll() {
-            if (availableImages.length > 0) {
-                loadImage(availableImages[currentImageIndex]);
-            }
+            if (availableImages.length > 0) loadImage(availableImages[currentImageIndex]);
             loadGPSCoordinates();
         }
 
-        // Function to generate and download log file
+        // Download log function (unchanged)
         function downloadLog() {
             let logContent = "Drone Surveillance Logs\n";
             logContent += "=======================\n\n";
-            
             const now = new Date();
             logContent += `Generated at: ${now.toLocaleString()}\n\n`;
             
-            // GPS coordinates section
+            // GPS section
             logContent += "GPS Coordinates (from GPSTEST.txt):\n";
             logContent += `Total coordinates: ${gpsCoordinates.length}\n`;
             gpsCoordinates.forEach(coord => {
@@ -623,7 +598,7 @@
             });
             logContent += '\n';
             
-            // Image information section
+            // Images section
             logContent += "Available Images (from GitHub):\n";
             logContent += `Total images: ${availableImages.length}\n`;
             if (availableImages.length > 0) {
@@ -635,33 +610,29 @@
             }
             logContent += '\n';
             
-            // Current state section
+            // Current state
             logContent += "Current State:\n";
             logContent += `Current GPS Coordinate Index: ${currentCoordIndex}\n`;
             logContent += `Current Image Index: ${currentImageIndex}\n`;
             logContent += `Auto-Cycle Enabled: ${autoCycleEnabled ? 'ON' : 'OFF'}\n`;
             logContent += `Connection Status: ${connectionStatusEl.textContent}\n`;
             
-            // Generate and download the Blob
+            // Generate and download
             const blob = new Blob([logContent], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
-            
             const link = document.createElement('a');
             link.href = url;
             link.download = 'database.txt';
-            
             document.body.appendChild(link);
             link.click();
-            
-            // Cleanup
             setTimeout(() => {
                 document.body.removeChild(link);
                 URL.revokeObjectURL(url);
             }, 0);
         }
 
-        // Initialize and set intervals
-        window.onload = function() {
+        // Initialize on load
+        window.onload = () => {
             loadGPSCoordinates();
             loadGitHubPhotos();
         };
