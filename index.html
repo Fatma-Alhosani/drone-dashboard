@@ -244,6 +244,12 @@
             font-size: 12px;
             color: #666;
         }
+        .download-status {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #4CAF50;
+        }
     </style>
 </head>
 <body>
@@ -277,6 +283,9 @@
             
             <div class="image-counter" id="imageCounter">Image 0 of 0</div>
             
+            <div class="github-info">
+                Loading images from: Fatma-Alhosani/drone-dashboard/photos
+            </div>
             
             <div class="status-bar">
                 <span class="last-updated" id="lastUpdated">Last updated: --:--:--</span>
@@ -321,12 +330,12 @@
     </div>
 
     <div class="button-container">
-        <a href="database.txt" download>
-            <button class="button">DOWNLOAD LOG</button>
-        </a>
+        <button class="button" onclick="downloadLog()">DOWNLOAD LOG</button>
         <button class="button refresh" onclick="refreshAll()">MANUAL REFRESH</button>
         <button class="button" onclick="reloadGitHubPhotos()">RELOAD IMAGES</button>
     </div>
+
+    <div class="download-status" id="downloadStatus"></div>
 
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
@@ -346,6 +355,7 @@
         const gpsFilenameEl = document.getElementById('gpsFilename');
         const autoCycleBtn = document.getElementById('autoCycleBtn');
         const imageCounterEl = document.getElementById('imageCounter');
+        const downloadStatusEl = document.getElementById('downloadStatus');
         
         // GitHub configuration (hardcoded as requested)
         const githubRepo = "Fatma-Alhosani/drone-dashboard";
@@ -375,10 +385,59 @@
             element.textContent = `Last updated: ${timeString}`;
         }
         
+        // Download log function
+        function downloadLog() {
+            try {
+                // Create log content
+                const now = new Date();
+                const dateString = now.toLocaleDateString();
+                const timeString = now.toLocaleTimeString();
+                
+                let logContent = `DRONE SURVEILLANCE LOG\n`;
+                logContent += `Generated: ${dateString} ${timeString}\n\n`;
+                logContent += `CURRENT GPS LOCATION:\n`;
+                logContent += `${currentCoordEl.textContent}\n\n`;
+                logContent += `ALL GPS COORDINATES:\n`;
+                
+                gpsCoordinates.forEach((coord, index) => {
+                    logContent += `${index + 1}. ${coord.lat.toFixed(6)}, ${coord.lng.toFixed(6)}\n`;
+                });
+                
+                logContent += `\nCURRENT IMAGE: ${filenameDisplayEl.textContent}\n`;
+                logContent += `IMAGE INDEX: ${currentImageIndex + 1} of ${availableImages.length}\n`;
+                
+                // Create a Blob with the log content
+                const blob = new Blob([logContent], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                
+                // Create a temporary anchor element to trigger the download
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `drone_log_${now.getTime()}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                
+                // Clean up
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    downloadStatusEl.textContent = 'Log downloaded successfully!';
+                    setTimeout(() => {
+                        downloadStatusEl.textContent = '';
+                    }, 3000);
+                }, 100);
+                
+            } catch (error) {
+                console.error('Error downloading log:', error);
+                downloadStatusEl.textContent = 'Error downloading log';
+                downloadStatusEl.style.color = '#F44336';
+            }
+        }
+        
         // Load images from GitHub repository
         async function loadGitHubPhotos() {
             feedPlaceholder.style.display = 'flex';
-            feedPlaceholder.innerHTML = '<div class="loading-spinner"></div>';
+            feedPlaceholder.innerHTML = '<div class="loading-spinner"></div><div>Loading images from GitHub...</div>';
             imageStatusEl.textContent = 'Fetching image list from GitHub...';
             
             try {
@@ -622,5 +681,3 @@
     </script>
 </body>
 </html>
-
-
