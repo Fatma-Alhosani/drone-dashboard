@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Drone Dashboard - GitHub Photos</title>
+    <title>Drone Dashboard</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <style>
         body {
@@ -136,6 +136,9 @@
         .button-container {
             text-align: center;
             margin: 20px 40px 40px;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
         }
         .button {
             background: #333;
@@ -146,7 +149,6 @@
             border-radius: 5px;
             cursor: pointer;
             transition: background 0.3s;
-            margin: 0 10px;
         }
         .button:hover {
             background: #4CAF50;
@@ -236,28 +238,11 @@
             border-radius: 10px;
             flex-direction: column;
         }
-        .github-config {
-            background: #252525;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
-        }
-        .github-config input {
-            background: #333;
-            border: 1px solid #444;
-            color: white;
-            padding: 8px;
-            border-radius: 4px;
-            width: 100%;
-            margin-bottom: 10px;
-        }
-        .github-config button {
-            background: #4CAF50;
-            color: white;
-            border: none;
-            padding: 8px 15px;
-            border-radius: 4px;
-            cursor: pointer;
+        .github-info {
+            text-align: center;
+            margin: 10px 0;
+            font-size: 12px;
+            color: #666;
         }
     </style>
 </head>
@@ -280,16 +265,9 @@
             <div class="feed-container">
                 <div id="feedPlaceholder" class="feed-placeholder">
                     <div class="loading-spinner"></div>
-                    <div>Loading drone feed...</div>
+                    <div>Loading images from GitHub...</div>
                 </div>
                 <img id="feedImg" alt="Drone Feed Image" style="display:none;">
-            </div>
-            
-            <div class="github-config">
-                <h3>GitHub Photos Configuration</h3>
-                <input type="text" id="githubRepo" placeholder="username/repository" value="Fatma-Alhosani/drone-dashboard">
-                <input type="text" id="photosPath" placeholder="photos folder path" value="photos">
-                <button onclick="loadGitHubPhotos()">Load Images from GitHub</button>
             </div>
             
             <div class="image-controls">
@@ -299,9 +277,13 @@
             
             <div class="image-counter" id="imageCounter">Image 0 of 0</div>
             
+            <div class="github-info">
+                Loading images from: Fatma-Alhosani/drone-dashboard/photos
+            </div>
+            
             <div class="status-bar">
                 <span class="last-updated" id="lastUpdated">Last updated: --:--:--</span>
-                <span id="imageStatus">Configure GitHub repository to load images</span>
+                <span id="imageStatus">Loading images from GitHub...</span>
             </div>
         </div>
 
@@ -346,6 +328,7 @@
             <button class="button">DOWNLOAD LOG</button>
         </a>
         <button class="button refresh" onclick="refreshAll()">MANUAL REFRESH</button>
+        <button class="button" onclick="reloadGitHubPhotos()">RELOAD IMAGES</button>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
@@ -366,8 +349,10 @@
         const gpsFilenameEl = document.getElementById('gpsFilename');
         const autoCycleBtn = document.getElementById('autoCycleBtn');
         const imageCounterEl = document.getElementById('imageCounter');
-        const githubRepoInput = document.getElementById('githubRepo');
-        const photosPathInput = document.getElementById('photosPath');
+        
+        // GitHub configuration (hardcoded as requested)
+        const githubRepo = "Fatma-Alhosani/drone-dashboard";
+        const photosPath = "photos";
         
         // GPS data
         let gpsCoordinates = [];
@@ -395,21 +380,13 @@
         
         // Load images from GitHub repository
         async function loadGitHubPhotos() {
-            const repo = githubRepoInput.value.trim();
-            const path = photosPathInput.value.trim();
-            
-            if (!repo || !path) {
-                imageStatusEl.textContent = 'Please enter both repository and path';
-                return;
-            }
-            
             feedPlaceholder.style.display = 'flex';
             feedPlaceholder.innerHTML = '<div class="loading-spinner"></div><div>Loading images from GitHub...</div>';
             imageStatusEl.textContent = 'Fetching image list from GitHub...';
             
             try {
                 // Use GitHub API to get contents of the photos folder
-                const apiUrl = `https://api.github.com/repos/${repo}/contents/${path}`;
+                const apiUrl = `https://api.github.com/repos/${githubRepo}/contents/${photosPath}`;
                 const response = await fetch(apiUrl);
                 
                 if (!response.ok) {
@@ -446,7 +423,7 @@
                         <div style="font-size: 18px; margin-bottom: 10px;">⚠️ Error Loading Images</div>
                         <div style="text-align: center;">
                             <div>${error.message}</div>
-                            <div style="font-size: 12px; margin-top: 5px;">Check repository name and path</div>
+                            <div style="font-size: 12px; margin-top: 5px;">Check repository: ${githubRepo}/${photosPath}</div>
                         </div>
                     </div>
                 `;
@@ -454,6 +431,11 @@
                 connectionStatusEl.textContent = 'CONNECTION ISSUE';
                 document.querySelector('.status-dot').style.background = '#F44336';
             }
+        }
+        
+        // Reload GitHub photos
+        function reloadGitHubPhotos() {
+            loadGitHubPhotos();
         }
         
         // Load GPS coordinates from file
@@ -638,13 +620,7 @@
         // Initialize and set intervals
         window.onload = function() {
             loadGPSCoordinates();
-            
-            // Preload the GitHub photos if we have a valid repo
-            const repo = githubRepoInput.value.trim();
-            const path = photosPathInput.value.trim();
-            if (repo && path) {
-                loadGitHubPhotos();
-            }
+            loadGitHubPhotos();
         };
     </script>
 </body>
