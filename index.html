@@ -209,6 +209,18 @@
             background: #333 !important;
             font-weight: bold !important;
         }
+        .image-controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .image-counter {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #aaa;
+        }
     </style>
 </head>
 <body>
@@ -225,7 +237,7 @@
         <div class="card feed">
             <div class="card-header">
                 <h2>Drone Feed</h2>
-                <div class="filename" id="filenameDisplay">test.jpg</div>
+                <div class="filename" id="filenameDisplay">feed.jpg</div>
             </div>
             <div class="feed-container">
                 <div id="feedPlaceholder" class="feed-placeholder">
@@ -234,6 +246,14 @@
                 </div>
                 <img id="feedImg" alt="Drone Feed Image" style="display:none;">
             </div>
+            
+            <div class="image-controls">
+                <button class="control-btn" onclick="previousImage()">Previous Image</button>
+                <button class="control-btn" onclick="nextImage()">Next Image</button>
+            </div>
+            
+            <div class="image-counter" id="imageCounter">Image 1 of 3</div>
+            
             <div class="status-bar">
                 <span class="last-updated" id="lastUpdated">Last updated: --:--:--</span>
                 <span id="imageStatus">Waiting for image...</span>
@@ -300,12 +320,17 @@
         const gpsCountEl = document.getElementById('gpsCount');
         const gpsFilenameEl = document.getElementById('gpsFilename');
         const autoCycleBtn = document.getElementById('autoCycleBtn');
+        const imageCounterEl = document.getElementById('imageCounter');
         
         // GPS data
         let gpsCoordinates = [];
         let currentCoordIndex = 0;
         let autoCycleInterval = null;
         let autoCycleEnabled = false;
+        
+        // Image data
+        let availableImages = ['feed.jpg', 'test.jpg']; // Default images in photos folder
+        let currentImageIndex = 0;
         
         // Map initialization
         const map = L.map('map').setView([37.7749, -122.4194], 13);
@@ -427,8 +452,22 @@
             }
         }
         
-        // ---- image loading with error handling ----
-        function refreshFeed() {
+        // Navigate to next image
+        function nextImage() {
+            if (availableImages.length === 0) return;
+            currentImageIndex = (currentImageIndex + 1) % availableImages.length;
+            loadImage(availableImages[currentImageIndex]);
+        }
+        
+        // Navigate to previous image
+        function previousImage() {
+            if (availableImages.length === 0) return;
+            currentImageIndex = (currentImageIndex - 1 + availableImages.length) % availableImages.length;
+            loadImage(availableImages[currentImageIndex]);
+        }
+        
+        // Load a specific image
+        function loadImage(imageName) {
             // Show loading state
             feedPlaceholder.style.display = 'flex';
             feedImg.style.display = 'none';
@@ -449,7 +488,8 @@
                 document.querySelector('.status-dot').style.background = '#4CAF50';
                 
                 // Update filename display
-                filenameDisplayEl.textContent = 'test.jpg';
+                filenameDisplayEl.textContent = imageName;
+                imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
             };
             
             testImage.onerror = function() {
@@ -463,10 +503,16 @@
                 
                 // Update filename display
                 filenameDisplayEl.textContent = 'Image not available';
+                imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
             };
             
-            // Try to load the image
-            testImage.src = 'https://placehold.co/600x400/1a1a1a/4CAF50/text=Drone+Feed+' + Date.now();
+            // Try to load the image from the photos folder
+            testImage.src = 'photos/' + imageName + cacheBuster;
+        }
+        
+        // ---- image loading with error handling ----
+        function refreshFeed() {
+            loadImage(availableImages[currentImageIndex]);
         }
         
         // Refresh all data
