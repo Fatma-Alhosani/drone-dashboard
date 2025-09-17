@@ -47,7 +47,7 @@
             background: #1e1e1e;
             border-radius: 10px;
             padding: 20px;
-            width: min(560px, 100%);
+            width: min(700px, 90%);  /* Improved responsiveness and width */
             box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
         }
         .card-header {
@@ -77,17 +77,23 @@
         .feed-container {
             position: relative;
             width: 100%;
-            height: 400px;
+            padding-top: 56.25%;  /* 16:9 aspect ratio for balanced image display */
             border-radius: 10px;
             overflow: hidden;
+            margin-bottom: 15px;  /* Adds space below the feed container */
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);  /* Subtle shadow for depth */
         }
         .feed img {
             width: 100%;
             height: 100%;
-            object-fit: contain;
+            object-fit: contain;  /* Maintains image aspect ratio */
+            position: absolute;    /* Ensures image fills container */
+            top: 0;
+            left: 0;
             border-radius: 10px;
             display: block;
             transition: opacity 0.3s;
+            z-index: 1;           /* Ensures image appears above placeholder */
         }
         .feed-placeholder {
             position: absolute;
@@ -102,6 +108,7 @@
             color: #888;
             border-radius: 10px;
             flex-direction: column;
+            padding: 20px;  /* More spacing inside placeholder */
         }
         .alert-box {
             background: #c62828;
@@ -139,6 +146,7 @@
             display: flex;
             justify-content: center;
             gap: 15px;
+            padding-top: 20px;  /* Adds space above buttons */
         }
         .button {
             background: #333;
@@ -376,7 +384,6 @@
             imageStatusEl.textContent = 'Fetching image list from GitHub...';
             
             try {
-                // Use GitHub API to get contents of the photos folder
                 const apiUrl = `https://api.github.com/repos/${githubRepo}/contents/${photosPath}`;
                 const response = await fetch(apiUrl);
                 
@@ -385,8 +392,6 @@
                 }
                 
                 const data = await response.json();
-                
-                // Filter for image files
                 availableImages = data
                     .filter(item => 
                         item.type === 'file' && 
@@ -402,7 +407,6 @@
                     throw new Error('No images found in the specified folder');
                 }
                 
-                // Start with the first image
                 currentImageIndex = 0;
                 loadImage(availableImages[currentImageIndex]);
                 imageStatusEl.textContent = `Loaded ${availableImages.length} images from GitHub`;
@@ -423,7 +427,6 @@
                 connectionStatusEl.textContent = 'CONNECTION ISSUE';
                 document.querySelector('.status-dot').style.background = '#F44336';
                 
-                // Update filename display
                 filenameDisplayEl.textContent = 'Image not available';
                 imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
             }
@@ -439,7 +442,6 @@
             try {
                 coordsStatusEl.textContent = 'Loading GPS data...';
                 
-                // For demonstration purposes, we'll use the provided coordinates directly
                 const coordinatesText = `37.7749, -122.4194
 48.8566, 2.3522
 -33.9249, 18.4241
@@ -452,7 +454,6 @@
 40.4168, -3.7038`;
                 
                 const lines = coordinatesText.split('\n').filter(line => line.trim() !== '');
-                
                 gpsCoordinates = lines.map(line => {
                     const [lat, lng] = line.split(',').map(coord => parseFloat(coord.trim()));
                     return { lat, lng };
@@ -492,7 +493,6 @@
                 coordinatesListEl.appendChild(coordElement);
             });
             
-            // Scroll to the active coordinate
             const activeCoord = document.getElementById(`coord-${currentCoordIndex}`);
             if (activeCoord) {
                 activeCoord.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -508,7 +508,6 @@
             marker.setLatLng([coord.lat, coord.lng]);
             currentCoordEl.textContent = `${coord.lat.toFixed(4)}, ${coord.lng.toFixed(4)}`;
             
-            // Update highlighted coordinate in list
             displayCoordinatesList();
         }
         
@@ -557,17 +556,14 @@
         
         // Load a specific image
         function loadImage(imageInfo) {
-            // Show loading state
             feedPlaceholder.style.display = 'flex';
             feedImg.style.display = 'none';
             imageStatusEl.textContent = 'Loading...';
             
-            // Create a new image object to test loading
             const testImage = new Image();
             const cacheBuster = '?nocache=' + Date.now();
             
             testImage.onload = function() {
-                // If image loads successfully, set it as the source
                 feedImg.src = testImage.src;
                 feedImg.style.display = 'block';
                 feedPlaceholder.style.display = 'none';
@@ -576,13 +572,11 @@
                 connectionStatusEl.textContent = 'OPERATIONAL';
                 document.querySelector('.status-dot').style.background = '#4CAF50';
                 
-                // Update filename display
                 filenameDisplayEl.textContent = imageInfo.name;
                 imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
             };
             
             testImage.onerror = function() {
-                // If image fails to load, show a better placeholder
                 feedPlaceholder.innerHTML = `
                     <div class="placeholder-image">
                         <div style="font-size: 18px; margin-bottom: 10px;">⚠️ Image Not Available</div>
@@ -598,12 +592,10 @@
                 connectionStatusEl.textContent = 'CONNECTION ISSUE';
                 document.querySelector('.status-dot').style.background = '#F44336';
                 
-                // Update filename display
                 filenameDisplayEl.textContent = 'Image not available';
                 imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
             };
             
-            // Try to load the image from GitHub
             testImage.src = imageInfo.url + cacheBuster;
         }
         
@@ -615,17 +607,15 @@
             loadGPSCoordinates();
         }
 
-        // New function to generate and download log file
+        // Function to generate and download log file
         function downloadLog() {
-            // Collect log data
             let logContent = "Drone Surveillance Logs\n";
             logContent += "=======================\n\n";
             
-            // Add current timestamp
             const now = new Date();
             logContent += `Generated at: ${now.toLocaleString()}\n\n`;
             
-            // Add GPS coordinates section
+            // GPS coordinates section
             logContent += "GPS Coordinates (from GPSTEST.txt):\n";
             logContent += `Total coordinates: ${gpsCoordinates.length}\n`;
             gpsCoordinates.forEach(coord => {
@@ -633,7 +623,7 @@
             });
             logContent += '\n';
             
-            // Add image information section
+            // Image information section
             logContent += "Available Images (from GitHub):\n";
             logContent += `Total images: ${availableImages.length}\n`;
             if (availableImages.length > 0) {
@@ -645,27 +635,25 @@
             }
             logContent += '\n';
             
-            // Add current state information
+            // Current state section
             logContent += "Current State:\n";
             logContent += `Current GPS Coordinate Index: ${currentCoordIndex}\n`;
             logContent += `Current Image Index: ${currentImageIndex}\n`;
             logContent += `Auto-Cycle Enabled: ${autoCycleEnabled ? 'ON' : 'OFF'}\n`;
             logContent += `Connection Status: ${connectionStatusEl.textContent}\n`;
             
-            // Create Blob and trigger download
+            // Generate and download the Blob
             const blob = new Blob([logContent], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             
-            // Create temporary link element
             const link = document.createElement('a');
             link.href = url;
             link.download = 'database.txt';
             
-            // Append to body and simulate click
             document.body.appendChild(link);
             link.click();
             
-            // Cleanup: Remove link and revoke URL
+            // Cleanup
             setTimeout(() => {
                 document.body.removeChild(link);
                 URL.revokeObjectURL(url);
