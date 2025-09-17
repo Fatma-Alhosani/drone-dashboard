@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Drone Dashboard</title>
+    <title>Drone Dashboard - GitHub Photos</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <style>
         body {
@@ -236,6 +236,29 @@
             border-radius: 10px;
             flex-direction: column;
         }
+        .github-config {
+            background: #252525;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        .github-config input {
+            background: #333;
+            border: 1px solid #444;
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .github-config button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -252,7 +275,7 @@
         <div class="card feed">
             <div class="card-header">
                 <h2>Drone Feed</h2>
-                <div class="filename" id="filenameDisplay">feed.jpg</div>
+                <div class="filename" id="filenameDisplay">Loading images...</div>
             </div>
             <div class="feed-container">
                 <div id="feedPlaceholder" class="feed-placeholder">
@@ -262,16 +285,23 @@
                 <img id="feedImg" alt="Drone Feed Image" style="display:none;">
             </div>
             
+            <div class="github-config">
+                <h3>GitHub Photos Configuration</h3>
+                <input type="text" id="githubRepo" placeholder="username/repository" value="Fatma-Alhosani/drone-dashboard">
+                <input type="text" id="photosPath" placeholder="photos folder path" value="photos">
+                <button onclick="loadGitHubPhotos()">Load Images from GitHub</button>
+            </div>
+            
             <div class="image-controls">
                 <button class="control-btn" onclick="previousImage()">Previous Image</button>
                 <button class="control-btn" onclick="nextImage()">Next Image</button>
             </div>
             
-            <div class="image-counter" id="imageCounter">Image 1 of 2</div>
+            <div class="image-counter" id="imageCounter">Image 0 of 0</div>
             
             <div class="status-bar">
                 <span class="last-updated" id="lastUpdated">Last updated: --:--:--</span>
-                <span id="imageStatus">Waiting for image...</span>
+                <span id="imageStatus">Configure GitHub repository to load images</span>
             </div>
         </div>
 
@@ -336,6 +366,8 @@
         const gpsFilenameEl = document.getElementById('gpsFilename');
         const autoCycleBtn = document.getElementById('autoCycleBtn');
         const imageCounterEl = document.getElementById('imageCounter');
+        const githubRepoInput = document.getElementById('githubRepo');
+        const photosPathInput = document.getElementById('photosPath');
         
         // GPS data
         let gpsCoordinates = [];
@@ -343,8 +375,8 @@
         let autoCycleInterval = null;
         let autoCycleEnabled = false;
         
-        // Image data - using local images from photos folder
-        let availableImages = ['photos/feed.jpg', 'photos/test.jpg'];
+        // Image data
+        let availableImages = [];
         let currentImageIndex = 0;
         
         // Map initialization
@@ -361,13 +393,75 @@
             element.textContent = `Last updated: ${timeString}`;
         }
         
+        // Load images from GitHub repository
+        async function loadGitHubPhotos() {
+            const repo = githubRepoInput.value.trim();
+            const path = photosPathInput.value.trim();
+            
+            if (!repo || !path) {
+                imageStatusEl.textContent = 'Please enter both repository and path';
+                return;
+            }
+            
+            feedPlaceholder.style.display = 'flex';
+            feedPlaceholder.innerHTML = '<div class="loading-spinner"></div><div>Loading images from GitHub...</div>';
+            imageStatusEl.textContent = 'Fetching image list from GitHub...';
+            
+            try {
+                // Use GitHub API to get contents of the photos folder
+                const apiUrl = `https://api.github.com/repos/${repo}/contents/${path}`;
+                const response = await fetch(apiUrl);
+                
+                if (!response.ok) {
+                    throw new Error(`GitHub API error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Filter for image files
+                availableImages = data
+                    .filter(item => 
+                        item.type === 'file' && 
+                        /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(item.name)
+                    )
+                    .map(item => ({
+                        name: item.name,
+                        url: item.download_url,
+                        path: item.path
+                    }));
+                
+                if (availableImages.length === 0) {
+                    throw new Error('No images found in the specified folder');
+                }
+                
+                // Start with the first image
+                currentImageIndex = 0;
+                loadImage(availableImages[currentImageIndex]);
+                imageStatusEl.textContent = `Loaded ${availableImages.length} images from GitHub`;
+                
+            } catch (error) {
+                console.error('Error loading GitHub photos:', error);
+                feedPlaceholder.innerHTML = `
+                    <div class="placeholder-image">
+                        <div style="font-size: 18px; margin-bottom: 10px;">⚠️ Error Loading Images</div>
+                        <div style="text-align: center;">
+                            <div>${error.message}</div>
+                            <div style="font-size: 12px; margin-top: 5px;">Check repository name and path</div>
+                        </div>
+                    </div>
+                `;
+                imageStatusEl.textContent = 'Error loading images from GitHub';
+                connectionStatusEl.textContent = 'CONNECTION ISSUE';
+                document.querySelector('.status-dot').style.background = '#F44336';
+            }
+        }
+        
         // Load GPS coordinates from file
         async function loadGPSCoordinates() {
             try {
                 coordsStatusEl.textContent = 'Loading GPS data...';
                 
                 // For demonstration purposes, we'll use the provided coordinates directly
-                // In a real scenario, you would fetch from GPSTEST.txt
                 const coordinatesText = `37.7749, -122.4194
 48.8566, 2.3522
 -33.9249, 18.4241
@@ -482,7 +576,7 @@
         }
         
         // Load a specific image
-        function loadImage(imagePath) {
+        function loadImage(imageInfo) {
             // Show loading state
             feedPlaceholder.style.display = 'flex';
             feedImg.style.display = 'none';
@@ -503,8 +597,7 @@
                 document.querySelector('.status-dot').style.background = '#4CAF50';
                 
                 // Update filename display
-                const imageName = imagePath.split('/').pop();
-                filenameDisplayEl.textContent = imageName;
+                filenameDisplayEl.textContent = imageInfo.name;
                 imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
             };
             
@@ -514,8 +607,8 @@
                     <div class="placeholder-image">
                         <div style="font-size: 18px; margin-bottom: 10px;">⚠️ Image Not Available</div>
                         <div style="text-align: center;">
-                            <div>Image failed to load: ${imagePath.split('/').pop()}</div>
-                            <div style="font-size: 12px; margin-top: 5px;">Check if the file exists in the photos folder</div>
+                            <div>Image failed to load: ${imageInfo.name}</div>
+                            <div style="font-size: 12px; margin-top: 5px;">The image may not be accessible</div>
                         </div>
                     </div>
                 `;
@@ -530,28 +623,28 @@
                 imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
             };
             
-            // Try to load the image from the photos folder
-            testImage.src = imagePath + cacheBuster;
-        }
-        
-        // ---- image loading with error handling ----
-        function refreshFeed() {
-            loadImage(availableImages[currentImageIndex]);
+            // Try to load the image from GitHub
+            testImage.src = imageInfo.url + cacheBuster;
         }
         
         // Refresh all data
         function refreshAll() {
-            refreshFeed();
+            if (availableImages.length > 0) {
+                loadImage(availableImages[currentImageIndex]);
+            }
             loadGPSCoordinates();
         }
         
         // Initialize and set intervals
-        refreshAll();
-        setInterval(refreshFeed, 15000); // refresh image every 15s
-        
-        // Load coordinates on page load
         window.onload = function() {
             loadGPSCoordinates();
+            
+            // Preload the GitHub photos if we have a valid repo
+            const repo = githubRepoInput.value.trim();
+            const path = photosPathInput.value.trim();
+            if (repo && path) {
+                loadGitHubPhotos();
+            }
         };
     </script>
 </body>
