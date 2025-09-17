@@ -47,7 +47,7 @@
             background: #1e1e1e;
             border-radius: 10px;
             padding: 20px;
-            width: min(550px, 85%);  /* Reduced max width to 550px (from 700px) */
+            width: min(560px, 100%);
             box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
         }
         .card-header {
@@ -77,23 +77,17 @@
         .feed-container {
             position: relative;
             width: 100%;
-            padding-top: 40%;  /* Reduced to 40% (shorter height) */
+            height: 350px; /* Changed to medium size (350px) */
             border-radius: 10px;
             overflow: hidden;
-            margin-bottom: 15px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
         }
         .feed img {
             width: 100%;
             height: 100%;
             object-fit: contain;
-            position: absolute;
-            top: 0;
-            left: 0;
             border-radius: 10px;
             display: block;
             transition: opacity 0.3s;
-            z-index: 1;
         }
         .feed-placeholder {
             position: absolute;
@@ -108,7 +102,6 @@
             color: #888;
             border-radius: 10px;
             flex-direction: column;
-            padding: 15px;  /* Slightly reduced padding */
         }
         .alert-box {
             background: #c62828;
@@ -146,7 +139,6 @@
             display: flex;
             justify-content: center;
             gap: 15px;
-            padding-top: 20px;
         }
         .button {
             background: #333;
@@ -165,7 +157,7 @@
             background: #2196F3;
         }
         .button.refresh:hover {
-            background: #0b7dda;
+            background: 'none';
         }
         .status-bar {
             display: flex;
@@ -226,11 +218,11 @@
             display: flex;
             justify-content: center;
             gap: 10px;
-            margin-top: 10px;  /* Reduced margin for tighter layout */
+            margin-top: 15px;
         }
         .image-counter {
             text-align: center;
-            margin-top: 5px;  /* Reduced margin for tighter layout */
+            margin-top: 10px;
             font-size: 14px;
             color: #aaa;
         }
@@ -347,9 +339,9 @@
         const gpsCountEl = document.getElementById('gpsCount');
         const gpsFilenameEl = document.getElementById('gpsFilename');
         const autoCycleBtn = document.getElementById('autoCycleBtn');
-        const imageCounterEl = document.getElementById('image-counter'); // Note: Updated ID if needed
+        const imageCounterEl = document.getElementById('imageCounter');
         
-        // GitHub configuration
+        // GitHub configuration (hardcoded as requested)
         const githubRepo = "Fatma-Alhosani/drone-dashboard";
         const photosPath = "photos";
         
@@ -370,32 +362,47 @@
         }).addTo(map);
         const marker = L.marker([37.7749, -122.4194]).addTo(map);
         
-        // Update timestamp function
+        // Function to update timestamp
         function updateTimestamp(element) {
             const now = new Date();
             const timeString = now.toLocaleTimeString();
             element.textContent = `Last updated: ${timeString}`;
         }
         
-        // Load images from GitHub
+        // Load images from GitHub repository
         async function loadGitHubPhotos() {
             feedPlaceholder.style.display = 'flex';
             feedPlaceholder.innerHTML = '<div class="loading-spinner"></div>';
             imageStatusEl.textContent = 'Fetching image list from GitHub...';
             
             try {
+                // Use GitHub API to get contents of the photos folder
                 const apiUrl = `https://api.github.com/repos/${githubRepo}/contents/${photosPath}`;
                 const response = await fetch(apiUrl);
                 
-                if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
+                if (!response.ok) {
+                    throw new Error(`GitHub API error: ${response.status}`);
+                }
                 
                 const data = await response.json();
+                
+                // Filter for image files
                 availableImages = data
-                    .filter(item => item.type === 'file' && /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(item.name))
-                    .map(item => ({ name: item.name, url: item.download_url, path: item.path }));
+                    .filter(item => 
+                        item.type === 'file' && 
+                        /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(item.name)
+                    )
+                    .map(item => ({
+                        name: item.name,
+                        url: item.download_url,
+                        path: item.path
+                    }));
                 
-                if (availableImages.length === 0) throw new Error('No images found in the specified folder');
+                if (availableImages.length === 0) {
+                    throw new Error('No images found in the specified folder');
+                }
                 
+                // Start with the first image
                 currentImageIndex = 0;
                 loadImage(availableImages[currentImageIndex]);
                 imageStatusEl.textContent = `Loaded ${availableImages.length} images from GitHub`;
@@ -416,21 +423,23 @@
                 connectionStatusEl.textContent = 'CONNECTION ISSUE';
                 document.querySelector('.status-dot').style.background = '#F44336';
                 
+                // Update filename display
                 filenameDisplayEl.textContent = 'Image not available';
                 imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
             }
         }
         
-        // Reload images
+        // Reload GitHub photos
         function reloadGitHubPhotos() {
             loadGitHubPhotos();
         }
         
-        // Load GPS coordinates
+        // Load GPS coordinates from file
         async function loadGPSCoordinates() {
             try {
                 coordsStatusEl.textContent = 'Loading GPS data...';
                 
+                // For demonstration purposes, we'll use the provided coordinates directly
                 const coordinatesText = `37.7749, -122.4194
 48.8566, 2.3522
 -33.9249, 18.4241
@@ -443,6 +452,7 @@
 40.4168, -3.7038`;
                 
                 const lines = coordinatesText.split('\n').filter(line => line.trim() !== '');
+                
                 gpsCoordinates = lines.map(line => {
                     const [lat, lng] = line.split(',').map(coord => parseFloat(coord.trim()));
                     return { lat, lng };
@@ -467,19 +477,26 @@
             }
         }
         
-        // Display coordinates list
+        // Display coordinates in the list
         function displayCoordinatesList() {
             coordinatesListEl.innerHTML = '';
             gpsCoordinates.forEach((coord, index) => {
                 const coordElement = document.createElement('div');
                 coordElement.textContent = `${coord.lat.toFixed(4)}, ${coord.lng.toFixed(4)}`;
                 coordElement.id = `coord-${index}`;
-                if (index === currentCoordIndex) coordElement.classList.add('active-coordinate');
+                
+                if (index === currentCoordIndex) {
+                    coordElement.classList.add('active-coordinate');
+                }
+                
                 coordinatesListEl.appendChild(coordElement);
             });
             
+            // Scroll to the active coordinate
             const activeCoord = document.getElementById(`coord-${currentCoordIndex}`);
-            if (activeCoord) activeCoord.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            if (activeCoord) {
+                activeCoord.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
         }
         
         // Update map marker
@@ -490,16 +507,20 @@
             map.setView([coord.lat, coord.lng], 13);
             marker.setLatLng([coord.lat, coord.lng]);
             currentCoordEl.textContent = `${coord.lat.toFixed(4)}, ${coord.lng.toFixed(4)}`;
+            
+            // Update highlighted coordinate in list
             displayCoordinatesList();
         }
         
-        // Next/Previous coordinate
+        // Navigate to next coordinate
         function nextCoordinate() {
             if (gpsCoordinates.length === 0) return;
             currentCoordIndex = (currentCoordIndex + 1) % gpsCoordinates.length;
             updateMapMarker(currentCoordIndex);
             updateTimestamp(coordsUpdatedEl);
         }
+        
+        // Navigate to previous coordinate
         function previousCoordinate() {
             if (gpsCoordinates.length === 0) return;
             currentCoordIndex = (currentCoordIndex - 1 + gpsCoordinates.length) % gpsCoordinates.length;
@@ -507,7 +528,7 @@
             updateTimestamp(coordsUpdatedEl);
         }
         
-        // Toggle auto-cycle
+        // Toggle auto-cycle of coordinates
         function toggleAutoCycle() {
             if (autoCycleEnabled) {
                 clearInterval(autoCycleInterval);
@@ -520,28 +541,33 @@
             }
         }
         
-        // Next/Previous image
+        // Navigate to next image
         function nextImage() {
             if (availableImages.length === 0) return;
             currentImageIndex = (currentImageIndex + 1) % availableImages.length;
             loadImage(availableImages[currentImageIndex]);
         }
+        
+        // Navigate to previous image
         function previousImage() {
             if (availableImages.length === 0) return;
             currentImageIndex = (currentImageIndex - 1 + availableImages.length) % availableImages.length;
             loadImage(availableImages[currentImageIndex]);
         }
         
-        // Load specific image
+        // Load a specific image
         function loadImage(imageInfo) {
+            // Show loading state
             feedPlaceholder.style.display = 'flex';
             feedImg.style.display = 'none';
             imageStatusEl.textContent = 'Loading...';
             
+            // Create a new image object to test loading
             const testImage = new Image();
             const cacheBuster = '?nocache=' + Date.now();
             
-            testImage.onload = () => {
+            testImage.onload = function() {
+                // If image loads successfully, set it as the source
                 feedImg.src = testImage.src;
                 feedImg.style.display = 'block';
                 feedPlaceholder.style.display = 'none';
@@ -550,11 +576,13 @@
                 connectionStatusEl.textContent = 'OPERATIONAL';
                 document.querySelector('.status-dot').style.background = '#4CAF50';
                 
+                // Update filename display
                 filenameDisplayEl.textContent = imageInfo.name;
                 imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
             };
             
-            testImage.onerror = () => {
+            testImage.onerror = function() {
+                // If image fails to load, show a better placeholder
                 feedPlaceholder.innerHTML = `
                     <div class="placeholder-image">
                         <div style="font-size: 18px; margin-bottom: 10px;">⚠️ Image Not Available</div>
@@ -570,27 +598,34 @@
                 connectionStatusEl.textContent = 'CONNECTION ISSUE';
                 document.querySelector('.status-dot').style.background = '#F44336';
                 
+                // Update filename display
                 filenameDisplayEl.textContent = 'Image not available';
                 imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
             };
             
+            // Try to load the image from GitHub
             testImage.src = imageInfo.url + cacheBuster;
         }
         
         // Refresh all data
         function refreshAll() {
-            if (availableImages.length > 0) loadImage(availableImages[currentImageIndex]);
+            if (availableImages.length > 0) {
+                loadImage(availableImages[currentImageIndex]);
+            }
             loadGPSCoordinates();
         }
 
-        // Download log function (unchanged)
+        // New function to generate and download log file
         function downloadLog() {
+            // Collect log data
             let logContent = "Drone Surveillance Logs\n";
             logContent += "=======================\n\n";
+            
+            // Add current timestamp
             const now = new Date();
             logContent += `Generated at: ${now.toLocaleString()}\n\n`;
             
-            // GPS section
+            // Add GPS coordinates section
             logContent += "GPS Coordinates (from GPSTEST.txt):\n";
             logContent += `Total coordinates: ${gpsCoordinates.length}\n`;
             gpsCoordinates.forEach(coord => {
@@ -598,7 +633,7 @@
             });
             logContent += '\n';
             
-            // Images section
+            // Add image information section
             logContent += "Available Images (from GitHub):\n";
             logContent += `Total images: ${availableImages.length}\n`;
             if (availableImages.length > 0) {
@@ -610,29 +645,35 @@
             }
             logContent += '\n';
             
-            // Current state
+            // Add current state information
             logContent += "Current State:\n";
             logContent += `Current GPS Coordinate Index: ${currentCoordIndex}\n`;
             logContent += `Current Image Index: ${currentImageIndex}\n`;
             logContent += `Auto-Cycle Enabled: ${autoCycleEnabled ? 'ON' : 'OFF'}\n`;
             logContent += `Connection Status: ${connectionStatusEl.textContent}\n`;
             
-            // Generate and download
+            // Create Blob and trigger download
             const blob = new Blob([logContent], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
+            
+            // Create temporary link element
             const link = document.createElement('a');
             link.href = url;
             link.download = 'database.txt';
+            
+            // Append to body and simulate click
             document.body.appendChild(link);
             link.click();
+            
+            // Cleanup: Remove link and revoke URL
             setTimeout(() => {
                 document.body.removeChild(link);
                 URL.revokeObjectURL(url);
             }, 0);
         }
 
-        // Initialize on load
-        window.onload = () => {
+        // Initialize and set intervals
+        window.onload = function() {
             loadGPSCoordinates();
             loadGitHubPhotos();
         };
