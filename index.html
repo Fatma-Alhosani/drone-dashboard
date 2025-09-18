@@ -354,6 +354,7 @@
         // Image data
         let availableImages = [];
         let currentImageIndex = 0;
+        let previousImageCount = 0; // Track previous image count to detect new additions
 
         // Map initialization
         const map = L.map('map').setView([37.7749, -122.4194], 13);
@@ -411,15 +412,24 @@
                     currentImageIndex = 0;
                 }
                 
+                // Check if new images were added
+                if (availableImages.length > previousImageCount) {
+                    imageStatusEl.textContent = `New images detected! Loaded ${availableImages.length} images from GitHub`;
+                } else {
+                    imageStatusEl.textContent = `Loaded ${availableImages.length} images from GitHub`;
+                }
+                
                 // Load the current image
                 loadImage(availableImages[currentImageIndex]);
-                imageStatusEl.textContent = `Loaded ${availableImages.length} images from GitHub`;
+                
+                // Update previous count for next check
+                previousImageCount = availableImages.length;
                 
             } catch (error) {
                 console.error('Error loading GitHub photos:', error);
-                availableImages = []; // Reset image list
-                currentImageIndex = -1; // Invalid index to force "0 of 0" counter
-                localStorage.removeItem('currentImageIndex'); // Clear invalid stored index
+                availableImages = [];
+                currentImageIndex = -1;
+                localStorage.removeItem('currentImageIndex');
                 
                 feedPlaceholder.innerHTML = `
                     <div class="placeholder-image">
@@ -440,7 +450,7 @@
             }
         }
         
-        // Reload GitHub photos
+        // Reload GitHub photos (unchanged)
         function reloadGitHubPhotos() {
             loadGitHubPhotos();
         }
@@ -549,33 +559,28 @@
             }
         }
         
-        // Navigate to next image (modified)
+        // Navigate to next image (unchanged)
         function nextImage() {
             if (availableImages.length === 0) return;
-            // Only move forward if not at last image
             if (currentImageIndex < availableImages.length - 1) {
                 currentImageIndex++;
                 loadImage(availableImages[currentImageIndex]);
-                // Save new index to localStorage
                 localStorage.setItem('currentImageIndex', currentImageIndex);
             }
         }
         
-        // Navigate to previous image (modified)
+        // Navigate to previous image (unchanged)
         function previousImage() {
             if (availableImages.length === 0) return;
-            // Only move backward if not at first image
             if (currentImageIndex > 0) {
                 currentImageIndex--;
                 loadImage(availableImages[currentImageIndex]);
-                // Save new index to localStorage
                 localStorage.setItem('currentImageIndex', currentImageIndex);
             }
         }
         
         // Load a specific image
         function loadImage(imageInfo) {
-            // Show loading state
             feedPlaceholder.style.display = 'flex';
             feedImg.style.display = 'none';
             imageStatusEl.textContent = 'Loading...';
@@ -584,7 +589,6 @@
             const cacheBuster = '?nocache=' + Date.now();
             
             testImage.onload = function() {
-                // If image loads successfully, set it as the source
                 feedImg.src = testImage.src;
                 feedImg.style.display = 'block';
                 feedPlaceholder.style.display = 'none';
@@ -593,13 +597,11 @@
                 connectionStatusEl.textContent = 'OPERATIONAL';
                 document.querySelector('.status-dot').style.background = '#4CAF50';
                 
-                // Update filename display
                 filenameDisplayEl.textContent = imageInfo.name;
                 imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
             };
             
             testImage.onerror = function() {
-                // If image fails to load, show a better placeholder
                 feedPlaceholder.innerHTML = `
                     <div class="placeholder-image">
                         <div style="font-size: 18px; margin-bottom: 10px;">⚠️ Image Not Available</div>
@@ -615,7 +617,6 @@
                 connectionStatusEl.textContent = 'CONNECTION ISSUE';
                 document.querySelector('.status-dot').style.background = '#F44336';
                 
-                // Update filename display
                 filenameDisplayEl.textContent = 'Image not available';
                 imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
             };
@@ -623,12 +624,19 @@
             testImage.src = imageInfo.url + cacheBuster;
         }
         
-        // Refresh all data
-        function refreshAll() {
-            if (availableImages.length > 0) {
-                loadImage(availableImages[currentImageIndex]);
+        // Refresh all data (modified to actively check for new images)
+        async function refreshAll() {
+            try {
+                // First, reload images to check for new additions
+                await loadGitHubPhotos();
+                // Then reload GPS coordinates
+                await loadGPSCoordinates();
+                // Update timestamps for both sections
+                updateTimestamp(lastUpdatedEl);
+                updateTimestamp(coordsUpdatedEl);
+            } catch (error) {
+                console.error('Error during manual refresh:', error);
             }
-            loadGPSCoordinates();
         }
 
         // Function to generate and download log file
@@ -666,7 +674,6 @@
             logContent += `Auto-Cycle Enabled: ${autoCycleEnabled ? 'ON' : 'OFF'}\n`;
             logContent += `Connection Status: ${connectionStatusEl.textContent}\n`;
             
-            // Create Blob and trigger download
             const blob = new Blob([logContent], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             
@@ -677,7 +684,6 @@
             document.body.appendChild(link);
             link.click();
             
-            // Cleanup: Remove link and revoke URL
             setTimeout(() => {
                 document.body.removeChild(link);
                 URL.revokeObjectURL(url);
@@ -688,6 +694,8 @@
         window.onload = function() {
             loadGPSCoordinates();
             loadGitHubPhotos();
+            // Initialize previousImageCount with initial availableImages length
+            previousImageCount = availableImages.length;
         };
     </script>
 </body>
