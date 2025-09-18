@@ -354,7 +354,7 @@
         // Image data
         let availableImages = [];
         let currentImageIndex = 0;
-        let previousImageCount = 0; // Track previous image count to detect new additions
+        let previousImageCount = 0; // Tracks previous image count for new detection
 
         // Map initialization
         const map = L.map('map').setView([37.7749, -122.4194], 13);
@@ -375,6 +375,7 @@
             feedPlaceholder.style.display = 'flex';
             feedPlaceholder.innerHTML = '<div class="loading-spinner"></div>';
             imageStatusEl.textContent = 'Fetching image list from GitHub...';
+            console.log('loadGitHubPhotos started'); // Debug
             
             try {
                 const apiUrl = `https://api.github.com/repos/${githubRepo}/contents/${photosPath}`;
@@ -386,7 +387,7 @@
                 
                 const data = await response.json();
                 
-                // Filter for image files
+                // Filter and map images
                 availableImages = data
                     .filter(item => 
                         item.type === 'file' && 
@@ -402,64 +403,61 @@
                     throw new Error('No images found in the specified folder');
                 }
                 
-                // Retrieve saved index from localStorage
+                // Retrieve and validate saved index
                 const savedIndex = parseInt(localStorage.getItem('currentImageIndex'));
-                // Validate saved index (must be within bounds)
                 if (!isNaN(savedIndex) && savedIndex >= 0 && savedIndex < availableImages.length) {
                     currentImageIndex = savedIndex;
                 } else {
-                    // Default to first image if no valid saved index
-                    currentImageIndex = 0;
+                    currentImageIndex = 0; // Default to first image
                 }
                 
-                // Check if new images were added
+                // Check for new images
                 if (availableImages.length > previousImageCount) {
                     imageStatusEl.textContent = `New images detected! Loaded ${availableImages.length} images from GitHub`;
                 } else {
                     imageStatusEl.textContent = `Loaded ${availableImages.length} images from GitHub`;
                 }
                 
-                // Load the current image
+                // Load current image and update counter
                 loadImage(availableImages[currentImageIndex]);
+                imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
                 
-                // Update previous count for next check
+                // Update previous count
                 previousImageCount = availableImages.length;
+                console.log('loadGitHubPhotos completed'); // Debug
                 
             } catch (error) {
-                console.error('Error loading GitHub photos:', error);
+                console.error('Error loading images:', error);
                 availableImages = [];
                 currentImageIndex = -1;
                 localStorage.removeItem('currentImageIndex');
                 
+                // Update UI on error
                 feedPlaceholder.innerHTML = `
                     <div class="placeholder-image">
-                        <div style="font-size: 18px; margin-bottom: 10px;">⚠️ Error Loading Images</div>
-                        <div style="text-align: center;">
-                            <div>${error.message}</div>
-                            <div style="font-size: 12px; margin-top: 5px;">Check repository: ${githubRepo}/${photosPath}</div>
-                        </div>
+                        <div style="font-size: 18px; margin-bottom: 10px;">⚠️ Image Load Error</div>
+                        <div>${error.message}</div>
+                        <div style="font-size: 12px; margin-top: 5px;">Check repo: ${githubRepo}/${photosPath}</div>
                     </div>
                 `;
                 feedImg.style.display = 'none';
-                imageStatusEl.textContent = 'Error loading images from GitHub';
-                connectionStatusEl.textContent = 'CONNECTION ISSUE';
-                document.querySelector('.status-dot').style.background = '#F44336';
-                
-                filenameDisplayEl.textContent = 'Image not available';
-                imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
+                imageStatusEl.textContent = 'Error loading images';
+                filenameDisplayEl.textContent = 'No images';
+                imageCounterEl.textContent = 'Image 0 of 0';
             }
         }
         
-        // Reload GitHub photos (unchanged)
+        // Reload images (direct call to loadGitHubPhotos)
         function reloadGitHubPhotos() {
             loadGitHubPhotos();
         }
         
-        // Load GPS coordinates from file
+        // Load GPS coordinates from hardcoded text (demo)
         async function loadGPSCoordinates() {
             try {
                 coordsStatusEl.textContent = 'Loading GPS data...';
                 
+                // Hardcoded coordinates (replace with actual file loading if needed)
                 const coordinatesText = `37.7749, -122.4194
 48.8566, 2.3522
 -33.9249, 18.4241
@@ -472,81 +470,72 @@
 40.4168, -3.7038`;
                 
                 const lines = coordinatesText.split('\n').filter(line => line.trim() !== '');
-                
                 gpsCoordinates = lines.map(line => {
-                    const [lat, lng] = line.split(',').map(coord => parseFloat(coord.trim()));
+                    const [lat, lng] = line.split(',').map(c => parseFloat(c.trim()));
                     return { lat, lng };
                 });
                 
                 if (gpsCoordinates.length > 0) {
                     displayCoordinatesList();
-                    updateMapMarker(0);
+                    updateMapMarker(currentCoordIndex);
                     gpsCountEl.textContent = `${gpsCoordinates.length} coordinates`;
                     gpsFilenameEl.textContent = 'GPSTEST.txt';
                     coordsStatusEl.textContent = 'GPS data loaded';
                 } else {
-                    coordsStatusEl.textContent = 'No coordinates found';
+                    coordsStatusEl.textContent = 'No GPS coordinates';
                 }
                 
                 updateTimestamp(coordsUpdatedEl);
                 
             } catch (error) {
-                coordsStatusEl.textContent = 'Error loading GPS data';
-                gpsFilenameEl.textContent = 'Error loading file';
-                console.error('Error loading GPS coordinates:', error);
+                console.error('GPS load error:', error);
+                coordsStatusEl.textContent = 'GPS data load failed';
+                gpsFilenameEl.textContent = 'Error';
             }
         }
         
-        // Display coordinates in the list
+        // Display coordinates list
         function displayCoordinatesList() {
             coordinatesListEl.innerHTML = '';
             gpsCoordinates.forEach((coord, index) => {
-                const coordElement = document.createElement('div');
-                coordElement.textContent = `${coord.lat.toFixed(4)}, ${coord.lng.toFixed(4)}`;
-                coordElement.id = `coord-${index}`;
-                
-                if (index === currentCoordIndex) {
-                    coordElement.classList.add('active-coordinate');
-                }
-                
-                coordinatesListEl.appendChild(coordElement);
+                const el = document.createElement('div');
+                el.textContent = `${coord.lat.toFixed(4)}, ${coord.lng.toFixed(4)}`;
+                el.id = `coord-${index}`;
+                el.classList.toggle('active-coordinate', index === currentCoordIndex);
+                coordinatesListEl.appendChild(el);
             });
-            
-            const activeCoord = document.getElementById(`coord-${currentCoordIndex}`);
-            if (activeCoord) {
-                activeCoord.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
+            const active = document.getElementById(`coord-${currentCoordIndex}`);
+            active?.scrollIntoView({ behavior: 'smooth' });
         }
         
-        // Update map marker
+        // Update map marker position
         function updateMapMarker(index) {
-            if (gpsCoordinates.length === 0) return;
-            
+            if (!gpsCoordinates.length) return;
             const coord = gpsCoordinates[index];
             map.setView([coord.lat, coord.lng], 13);
             marker.setLatLng([coord.lat, coord.lng]);
             currentCoordEl.textContent = `${coord.lat.toFixed(4)}, ${coord.lng.toFixed(4)}`;
-            
-            displayCoordinatesList();
         }
         
-        // Navigate to next coordinate
+        // Next GPS coordinate
         function nextCoordinate() {
-            if (gpsCoordinates.length === 0) return;
+            if (!gpsCoordinates.length) return;
             currentCoordIndex = (currentCoordIndex + 1) % gpsCoordinates.length;
             updateMapMarker(currentCoordIndex);
+            displayCoordinatesList();
             updateTimestamp(coordsUpdatedEl);
         }
         
-        // Navigate to previous coordinate
+        // Previous GPS coordinate
         function previousCoordinate() {
-            if (gpsCoordinates.length === 0) return;
+            if (!gpsCoordinates.length) return;
             currentCoordIndex = (currentCoordIndex - 1 + gpsCoordinates.length) % gpsCoordinates.length;
             updateMapMarker(currentCoordIndex);
+            displayCoordinatesList();
             updateTimestamp(coordsUpdatedEl);
         }
         
-        // Toggle auto-cycle of coordinates
+        // Toggle auto-cycle for GPS
         function toggleAutoCycle() {
             if (autoCycleEnabled) {
                 clearInterval(autoCycleInterval);
@@ -559,143 +548,128 @@
             }
         }
         
-        // Navigate to next image (unchanged)
+        // Next image (prevents cycling back)
         function nextImage() {
-            if (availableImages.length === 0) return;
-            if (currentImageIndex < availableImages.length - 1) {
-                currentImageIndex++;
-                loadImage(availableImages[currentImageIndex]);
-                localStorage.setItem('currentImageIndex', currentImageIndex);
-            }
+            if (!availableImages.length || currentImageIndex >= availableImages.length - 1) return;
+            currentImageIndex++;
+            loadImage(availableImages[currentImageIndex]);
+            localStorage.setItem('currentImageIndex', currentImageIndex);
+            updateTimestamp(lastUpdatedEl);
         }
         
-        // Navigate to previous image (unchanged)
+        // Previous image (prevents cycling back)
         function previousImage() {
-            if (availableImages.length === 0) return;
-            if (currentImageIndex > 0) {
-                currentImageIndex--;
-                loadImage(availableImages[currentImageIndex]);
-                localStorage.setItem('currentImageIndex', currentImageIndex);
-            }
+            if (!availableImages.length || currentImageIndex <= 0) return;
+            currentImageIndex--;
+            loadImage(availableImages[currentImageIndex]);
+            localStorage.setItem('currentImageIndex', currentImageIndex);
+            updateTimestamp(lastUpdatedEl);
         }
         
-        // Load a specific image
+        // Load specific image (handles loading state)
         function loadImage(imageInfo) {
             feedPlaceholder.style.display = 'flex';
             feedImg.style.display = 'none';
-            imageStatusEl.textContent = 'Loading...';
+            imageStatusEl.textContent = 'Loading image...';
             
-            const testImage = new Image();
+            const img = new Image();
             const cacheBuster = '?nocache=' + Date.now();
             
-            testImage.onload = function() {
-                feedImg.src = testImage.src;
+            img.onload = () => {
+                feedImg.src = img.src + cacheBuster; // Ensure fresh load
                 feedImg.style.display = 'block';
                 feedPlaceholder.style.display = 'none';
-                updateTimestamp(lastUpdatedEl);
-                imageStatusEl.textContent = 'Image loaded successfully';
-                connectionStatusEl.textContent = 'OPERATIONAL';
-                document.querySelector('.status-dot').style.background = '#4CAF50';
-                
                 filenameDisplayEl.textContent = imageInfo.name;
                 imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
+                updateTimestamp(lastUpdatedEl);
+                imageStatusEl.textContent = 'Image loaded';
+                connectionStatusEl.textContent = 'OPERATIONAL';
+                document.querySelector('.status-dot').style.background = '#4CAF50';
             };
             
-            testImage.onerror = function() {
+            img.onerror = () => {
                 feedPlaceholder.innerHTML = `
                     <div class="placeholder-image">
                         <div style="font-size: 18px; margin-bottom: 10px;">⚠️ Image Not Available</div>
-                        <div style="text-align: center;">
-                            <div>Image failed to load: ${imageInfo.name}</div>
-                            <div style="font-size: 12px; margin-top: 5px;">The image may not be accessible</div>
-                        </div>
+                        <div>Failed to load: ${imageInfo.name}</div>
                     </div>
                 `;
                 feedImg.style.display = 'none';
-                updateTimestamp(lastUpdatedEl);
-                imageStatusEl.textContent = 'Error loading image';
+                filenameDisplayEl.textContent = 'Image not available';
+                imageStatusEl.textContent = 'Image load failed';
                 connectionStatusEl.textContent = 'CONNECTION ISSUE';
                 document.querySelector('.status-dot').style.background = '#F44336';
-                
-                filenameDisplayEl.textContent = 'Image not available';
-                imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
+                updateTimestamp(lastUpdatedEl);
             };
             
-            testImage.src = imageInfo.url + cacheBuster;
+            img.src = imageInfo.url + cacheBuster;
         }
         
-        // Refresh all data (modified to actively check for new images)
+        // Manual refresh: reload images and GPS, check for new images
         async function refreshAll() {
+            console.log('refreshAll started'); // Debug
+            
             try {
-                // First, reload images to check for new additions
+                // Reload images first
                 await loadGitHubPhotos();
-                // Then reload GPS coordinates
+                
+                // Reload GPS coordinates
                 await loadGPSCoordinates();
+                
                 // Update timestamps for both sections
                 updateTimestamp(lastUpdatedEl);
                 updateTimestamp(coordsUpdatedEl);
+                
+                console.log('refreshAll completed'); // Debug
             } catch (error) {
-                console.error('Error during manual refresh:', error);
+                console.error('Refresh failed:', error);
             }
         }
 
-        // Function to generate and download log file
+        // Download log function
         function downloadLog() {
-            let logContent = "Drone Surveillance Logs\n";
-            logContent += "=======================\n\n";
-            
             const now = new Date();
-            logContent += `Generated at: ${now.toLocaleString()}\n\n`;
-            
-            // GPS coordinates section
-            logContent += "GPS Coordinates (from GPSTEST.txt):\n";
-            logContent += `Total coordinates: ${gpsCoordinates.length}\n`;
-            gpsCoordinates.forEach(coord => {
-                logContent += `Latitude: ${coord.lat.toFixed(4)}, Longitude: ${coord.lng.toFixed(4)}\n`;
-            });
-            logContent += '\n';
-            
-            // Image information section
-            logContent += "Available Images (from GitHub):\n";
-            logContent += `Total images: ${availableImages.length}\n`;
-            if (availableImages.length > 0) {
-                availableImages.forEach(img => {
-                    logContent += `Filename: ${img.name}, URL: ${img.url}, Path: ${img.path}\n`;
-                });
-            } else {
-                logContent += "No images available\n";
-            }
-            logContent += '\n';
-            
-            // Current state information
-            logContent += "Current State:\n";
-            logContent += `Current GPS Coordinate Index: ${currentCoordIndex}\n`;
-            logContent += `Current Image Index: ${currentImageIndex}\n`;
-            logContent += `Auto-Cycle Enabled: ${autoCycleEnabled ? 'ON' : 'OFF'}\n`;
-            logContent += `Connection Status: ${connectionStatusEl.textContent}\n`;
+            const logContent = `Drone Surveillance Logs\n=======================\nGenerated at: ${now.toLocaleString()}\n\n` +
+                `GPS Coordinates (${gpsCoordinates.length} total):\n${gpsCoordinates.map(c => 
+                    `Lat: ${c.lat.toFixed(4)}, Lng: ${c.lng.toFixed(4)}`
+                ).join('\n')}\n\n` +
+                `Available Images (${availableImages.length} total):\n${availableImages.map(img => 
+                    `File: ${img.name}, URL: ${img.url}`
+                ).join('\n')}\n\n` +
+                `Current State:\nImage Index: ${currentImageIndex}\nGPS Index: ${currentCoordIndex}\n` +
+                `Auto-Cycle: ${autoCycleEnabled ? 'ON' : 'OFF'}\nConnection Status: ${connectionStatusEl.textContent}`;
             
             const blob = new Blob([logContent], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             
             const link = document.createElement('a');
             link.href = url;
-            link.download = 'database.txt';
+            link.download = 'drone_logs.txt';
             
             document.body.appendChild(link);
             link.click();
-            
             setTimeout(() => {
                 document.body.removeChild(link);
                 URL.revokeObjectURL(url);
             }, 0);
         }
 
-        // Initialize and set intervals
-        window.onload = function() {
-            loadGPSCoordinates();
-            loadGitHubPhotos();
-            // Initialize previousImageCount with initial availableImages length
-            previousImageCount = availableImages.length;
+        // Initialize on page load
+        window.onload = async () => {
+            try {
+                // Initial load of GPS and images
+                await loadGPSCoordinates();
+                await loadGitHubPhotos();
+                
+                // Initialize previousImageCount with initial image count
+                previousImageCount = availableImages.length;
+                
+                // Update timestamps
+                updateTimestamp(lastUpdatedEl);
+                updateTimestamp(coordsUpdatedEl);
+            } catch (error) {
+                console.error('Initial load error:', error);
+            }
         };
     </script>
 </body>
