@@ -341,7 +341,7 @@
         const autoCycleBtn = document.getElementById('autoCycleBtn');
         const imageCounterEl = document.getElementById('imageCounter');
         
-        // GitHub configuration (hardcoded as requested)
+        // GitHub configuration
         const githubRepo = "Fatma-Alhosani/drone-dashboard";
         const photosPath = "photos";
         
@@ -354,7 +354,7 @@
         // Image data
         let availableImages = [];
         let currentImageIndex = 0;
-        
+
         // Map initialization
         const map = L.map('map').setView([37.7749, -122.4194], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -376,7 +376,6 @@
             imageStatusEl.textContent = 'Fetching image list from GitHub...';
             
             try {
-                // Use GitHub API to get contents of the photos folder
                 const apiUrl = `https://api.github.com/repos/${githubRepo}/contents/${photosPath}`;
                 const response = await fetch(apiUrl);
                 
@@ -402,13 +401,26 @@
                     throw new Error('No images found in the specified folder');
                 }
                 
-                // Start with the first image
-                currentImageIndex = 0;
+                // Retrieve saved index from localStorage
+                const savedIndex = parseInt(localStorage.getItem('currentImageIndex'));
+                // Validate saved index (must be within bounds)
+                if (!isNaN(savedIndex) && savedIndex >= 0 && savedIndex < availableImages.length) {
+                    currentImageIndex = savedIndex;
+                } else {
+                    // Default to first image if no valid saved index
+                    currentImageIndex = 0;
+                }
+                
+                // Load the current image
                 loadImage(availableImages[currentImageIndex]);
                 imageStatusEl.textContent = `Loaded ${availableImages.length} images from GitHub`;
                 
             } catch (error) {
                 console.error('Error loading GitHub photos:', error);
+                availableImages = []; // Reset image list
+                currentImageIndex = -1; // Invalid index to force "0 of 0" counter
+                localStorage.removeItem('currentImageIndex'); // Clear invalid stored index
+                
                 feedPlaceholder.innerHTML = `
                     <div class="placeholder-image">
                         <div style="font-size: 18px; margin-bottom: 10px;">⚠️ Error Loading Images</div>
@@ -423,7 +435,6 @@
                 connectionStatusEl.textContent = 'CONNECTION ISSUE';
                 document.querySelector('.status-dot').style.background = '#F44336';
                 
-                // Update filename display
                 filenameDisplayEl.textContent = 'Image not available';
                 imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
             }
@@ -439,7 +450,6 @@
             try {
                 coordsStatusEl.textContent = 'Loading GPS data...';
                 
-                // For demonstration purposes, we'll use the provided coordinates directly
                 const coordinatesText = `37.7749, -122.4194
 48.8566, 2.3522
 -33.9249, 18.4241
@@ -492,7 +502,6 @@
                 coordinatesListEl.appendChild(coordElement);
             });
             
-            // Scroll to the active coordinate
             const activeCoord = document.getElementById(`coord-${currentCoordIndex}`);
             if (activeCoord) {
                 activeCoord.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -508,7 +517,6 @@
             marker.setLatLng([coord.lat, coord.lng]);
             currentCoordEl.textContent = `${coord.lat.toFixed(4)}, ${coord.lng.toFixed(4)}`;
             
-            // Update highlighted coordinate in list
             displayCoordinatesList();
         }
         
@@ -541,18 +549,28 @@
             }
         }
         
-        // Navigate to next image
+        // Navigate to next image (modified)
         function nextImage() {
             if (availableImages.length === 0) return;
-            currentImageIndex = (currentImageIndex + 1) % availableImages.length;
-            loadImage(availableImages[currentImageIndex]);
+            // Only move forward if not at last image
+            if (currentImageIndex < availableImages.length - 1) {
+                currentImageIndex++;
+                loadImage(availableImages[currentImageIndex]);
+                // Save new index to localStorage
+                localStorage.setItem('currentImageIndex', currentImageIndex);
+            }
         }
         
-        // Navigate to previous image
+        // Navigate to previous image (modified)
         function previousImage() {
             if (availableImages.length === 0) return;
-            currentImageIndex = (currentImageIndex - 1 + availableImages.length) % availableImages.length;
-            loadImage(availableImages[currentImageIndex]);
+            // Only move backward if not at first image
+            if (currentImageIndex > 0) {
+                currentImageIndex--;
+                loadImage(availableImages[currentImageIndex]);
+                // Save new index to localStorage
+                localStorage.setItem('currentImageIndex', currentImageIndex);
+            }
         }
         
         // Load a specific image
@@ -562,7 +580,6 @@
             feedImg.style.display = 'none';
             imageStatusEl.textContent = 'Loading...';
             
-            // Create a new image object to test loading
             const testImage = new Image();
             const cacheBuster = '?nocache=' + Date.now();
             
@@ -603,7 +620,6 @@
                 imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
             };
             
-            // Try to load the image from GitHub
             testImage.src = imageInfo.url + cacheBuster;
         }
         
@@ -615,17 +631,15 @@
             loadGPSCoordinates();
         }
 
-        // New function to generate and download log file
+        // Function to generate and download log file
         function downloadLog() {
-            // Collect log data
             let logContent = "Drone Surveillance Logs\n";
             logContent += "=======================\n\n";
             
-            // Add current timestamp
             const now = new Date();
             logContent += `Generated at: ${now.toLocaleString()}\n\n`;
             
-            // Add GPS coordinates section
+            // GPS coordinates section
             logContent += "GPS Coordinates (from GPSTEST.txt):\n";
             logContent += `Total coordinates: ${gpsCoordinates.length}\n`;
             gpsCoordinates.forEach(coord => {
@@ -633,7 +647,7 @@
             });
             logContent += '\n';
             
-            // Add image information section
+            // Image information section
             logContent += "Available Images (from GitHub):\n";
             logContent += `Total images: ${availableImages.length}\n`;
             if (availableImages.length > 0) {
@@ -645,7 +659,7 @@
             }
             logContent += '\n';
             
-            // Add current state information
+            // Current state information
             logContent += "Current State:\n";
             logContent += `Current GPS Coordinate Index: ${currentCoordIndex}\n`;
             logContent += `Current Image Index: ${currentImageIndex}\n`;
@@ -656,12 +670,10 @@
             const blob = new Blob([logContent], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             
-            // Create temporary link element
             const link = document.createElement('a');
             link.href = url;
             link.download = 'database.txt';
             
-            // Append to body and simulate click
             document.body.appendChild(link);
             link.click();
             
@@ -680,5 +692,3 @@
     </script>
 </body>
 </html>
-
-
