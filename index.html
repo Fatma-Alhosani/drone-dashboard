@@ -1,4 +1,4 @@
-<!DOCTYPE html><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -44,15 +44,12 @@
       position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px);
       background:#222; color:#fff; border:1px solid #444; border-radius:10px;
       padding:12px 16px; box-shadow:0 6px 20px rgba(0,0,0,.45); display:flex; align-items:center; gap:10px;
-      opacity:0; pointer-events:none; transition:opacity .25s ease, transform .25s ease;
-      z-index:1000;
+      opacity:0; pointer-events:none; transition:opacity .25s ease, transform .25s ease; z-index:1000;
     }
     .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; }
     .toast .dot{ width:10px; height:10px; border-radius:50%; background:#4CAF50; }
     .toast .actions{ margin-left:8px; display:flex; gap:8px; }
-    .toast button{
-      background:#333; color:#fff; border:1px solid #555; border-radius:6px; padding:6px 10px; cursor:pointer;
-    }
+    .toast button{ background:#333; color:#fff; border:1px solid #555; border-radius:6px; padding:6px 10px; cursor:pointer; }
     .toast button:hover{ background:#3a3a3a; }
   </style>
 </head>
@@ -121,7 +118,7 @@
   <button class="button refresh" id="refreshBtn">MANUAL REFRESH</button>
 </div>
 
-<!-- Toast (hidden by default) -->
+<!-- Toast -->
 <div id="newImageToast" class="toast" role="status" aria-live="polite">
   <span class="dot"></span>
   <span id="toastMsg">New image received</span>
@@ -133,9 +130,6 @@
 
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script>
-  // Optional: set a token to avoid rate limits (60/hr without)
-  // window.GITHUB_TOKEN = "ghp_xxx";
-
   // DOM refs
   const feedImg = document.getElementById('feedImg');
   const feedPlaceholder = document.getElementById('feedPlaceholder');
@@ -157,6 +151,7 @@
   // Config
   const githubRepo = "Fatma-Alhosani/drone-dashboard";
   const photosPath = "photos";
+  // window.GITHUB_TOKEN = "ghp_xxx"; // optional
 
   // State
   let availableImages = [];
@@ -165,32 +160,26 @@
   let currentCoordIndex = 0;
   let autoCycleInterval = null;
   let autoCycleEnabled = false;
-
-  // Keep the newest timestamp we've seen to detect new arrivals
   let lastSeenTimestamp = null; // ms since epoch
-  let newestName = null;        // for toast message
 
   // Map
   const map = L.map('map').setView([37.7749,-122.4194],13);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution:'&copy; OpenStreetMap contributors' }).addTo(map);
   const marker = L.marker([37.7749,-122.4194]).addTo(map);
 
-  // --- Helper to parse timestamp from filename ---
+  // Helpers
   function tsFromName(name){
     const m = name.match(/^(\d{4})-(\d{2})-(\d{2})\|(\d{2})-(\d{2})-(\d{2})/);
     if (!m) return null;
     const [ , Y, M, D, h, mnt, s ] = m.map(Number);
     return Date.UTC(Y, M-1, D, h, mnt, s);
   }
-
-  // GitHub fetch helper with optional token
   async function ghFetch(url){
     const headers = { 'Accept': 'application/vnd.github+json' };
     if (window.GITHUB_TOKEN) headers['Authorization'] = 'Bearer ' + window.GITHUB_TOKEN;
     return fetch(url, { headers });
   }
 
-  // Load images from GitHub and open newest
   async function loadGitHubPhotos(){
     feedPlaceholder.style.display='flex';
     feedPlaceholder.textContent='Loading images from GitHub…';
@@ -215,8 +204,7 @@
 
       currentImageIndex = availableImages.length - 1; // newest
       const newest = availableImages[currentImageIndex];
-      newestName = newest.name;
-      lastSeenTimestamp = newest.ts ?? Date.now(); // initialize "seen" time
+      lastSeenTimestamp = newest.ts ?? Date.now();
 
       loadImage(newest);
       imageCounterEl.textContent = `Image ${currentImageIndex+1} of ${availableImages.length}`;
@@ -230,12 +218,11 @@
     }
   }
 
-  // Background watcher: check if a newer image exists (by timestamp in name)
   async function checkForNewImages(){
     try{
       const apiUrl = `https://api.github.com/repos/${githubRepo}/contents/${photosPath}`;
       const res = await ghFetch(apiUrl);
-      if(!res.ok) return; // silent fail; try next tick
+      if(!res.ok) return;
 
       const data = await res.json();
       const imgs = data
@@ -244,7 +231,6 @@
 
       if(!imgs.length) return;
 
-      // Find newest by ts/name (same logic as main load)
       imgs.sort((a,b)=>{
         if(a.ts!=null && b.ts!=null) return a.ts - b.ts;
         if(a.ts!=null) return 1;
@@ -254,13 +240,9 @@
 
       const newest = imgs[imgs.length - 1];
       const newestTs = newest.ts ?? Date.now();
-
-      // If we haven't seen this timestamp yet, notify
       if (lastSeenTimestamp == null || newestTs > lastSeenTimestamp) {
         lastSeenTimestamp = newestTs;
-        newestName = newest.name;
         showToast(`New image received: ${newest.name}`, () => {
-          // sync main list to latest and open it
           availableImages = imgs;
           currentImageIndex = availableImages.length - 1;
           loadImage(availableImages[currentImageIndex]);
@@ -273,12 +255,9 @@
   function showToast(message, onView){
     toastMsg.textContent = message;
     toast.classList.add('show');
-
     const hide = ()=> toast.classList.remove('show');
     toastDismissBtn.onclick = hide;
     toastViewBtn.onclick = ()=>{ hide(); onView?.(); };
-
-    // auto-hide after 6s
     setTimeout(hide, 6000);
   }
 
@@ -307,12 +286,8 @@
     img.src=info.url+cache;
   }
 
-  function nextImage(){
-    if(currentImageIndex<availableImages.length-1){currentImageIndex++;loadImage(availableImages[currentImageIndex]);}
-  }
-  function previousImage(){
-    if(currentImageIndex>0){currentImageIndex--;loadImage(availableImages[currentImageIndex]);}
-  }
+  function nextImage(){ if(currentImageIndex<availableImages.length-1){ currentImageIndex++; loadImage(availableImages[currentImageIndex]); } }
+  function previousImage(){ if(currentImageIndex>0){ currentImageIndex--; loadImage(availableImages[currentImageIndex]); } }
 
   // GPS (demo)
   async function loadGPSCoordinates(){
@@ -352,19 +327,19 @@
     marker.setLatLng([c.lat,c.lng]);
     currentCoordEl.textContent=`${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`;
   }
-  function nextCoordinate(){if(!gpsCoordinates.length) return;currentCoordIndex=(currentCoordIndex+1)%gpsCoordinates.length;updateMapMarker(currentCoordIndex);displayCoordinatesList();}
-  function previousCoordinate(){if(!gpsCoordinates.length) return;currentCoordIndex=(currentCoordIndex-1+gpsCoordinates.length)%gpsCoordinates.length;updateMapMarker(currentCoordIndex);displayCoordinatesList();}
+  function nextCoordinate(){ if(!gpsCoordinates.length) return; currentCoordIndex=(currentCoordIndex+1)%gpsCoordinates.length; updateMapMarker(currentCoordIndex); displayCoordinatesList(); }
+  function previousCoordinate(){ if(!gpsCoordinates.length) return; currentCoordIndex=(currentCoordIndex-1+gpsCoordinates.length)%gpsCoordinates.length; updateMapMarker(currentCoordIndex); displayCoordinatesList(); }
   function toggleAutoCycle(){
-    if(autoCycleEnabled){clearInterval(autoCycleInterval);autoCycleEnabled=false;autoCycleBtn.textContent='Auto-Cycle: OFF';}
-    else{autoCycleInterval=setInterval(nextCoordinate,3000);autoCycleEnabled=true;autoCycleBtn.textContent='Auto-Cycle: ON';}
+    if(autoCycleEnabled){ clearInterval(autoCycleInterval); autoCycleEnabled=false; autoCycleBtn.textContent='Auto-Cycle: OFF'; }
+    else{ autoCycleInterval=setInterval(nextCoordinate,3000); autoCycleEnabled=true; autoCycleBtn.textContent='Auto-Cycle: ON'; }
   }
 
   // Manual refresh
-  async function refreshAll(){await loadGitHubPhotos();await loadGPSCoordinates();}
+  async function refreshAll(){ await loadGitHubPhotos(); await loadGPSCoordinates(); }
   async function handleRefreshClick(e){
     const btn=e.currentTarget,txt=btn.textContent;
-    btn.disabled=true;btn.textContent='Refreshing…';
-    try{await refreshAll();}finally{btn.disabled=false;btn.textContent=txt;}
+    btn.disabled=true; btn.textContent='Refreshing…';
+    try{ await refreshAll(); } finally { btn.disabled=false; btn.textContent=txt; }
   }
 
   // Download log
@@ -396,312 +371,9 @@ Connection: ${connectionStatusEl.textContent}`;
     toastViewBtn.addEventListener('click',()=>toast.classList.remove('show'));
 
     loadGPSCoordinates();
-    loadGitHubPhotos(); // sets lastSeenTimestamp/newestName
-
-    // Background watcher every 30s (tunable)
-    setInterval(checkForNewImages, 30000);
+    loadGitHubPhotos();             // open newest image
+    setInterval(checkForNewImages, 30000); // notify on new images
   });
 </script>
 </body>
 </html>
-
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Drone Dashboard</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
-  <style>
-    body{margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#111;color:#fff;overflow-x:hidden;}
-    header{background:#000;padding:15px 30px;font-size:20px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 10px rgba(0,0,0,.5);}
-    .header-status{font-size:14px;color:#4CAF50;display:flex;align-items:center;}
-    .status-dot{width:10px;height:10px;background:#4CAF50;border-radius:50%;margin-right:8px;}
-
-    .container{display:flex;justify-content:space-around;margin:30px;gap:30px;flex-wrap:wrap;}
-    .card{background:#1e1e1e;border-radius:10px;padding:20px;width:min(560px,100%);box-shadow:0 0 15px rgba(0,0,0,.4);}
-    .card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;border-bottom:1px solid #333;padding-bottom:10px;}
-    .card h2{margin:0;font-size:22px;color:#4CAF50;}
-    .filename{font-size:14px;color:#aaa;background:#333;padding:4px 10px;border-radius:4px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-
-    .feed-container{position:relative;width:100%;height:320px;border-radius:10px;overflow:hidden;background:#151515;}
-    .feed img{width:100%;height:100%;object-fit:contain;border-radius:10px;display:block;transition:opacity .25s ease;}
-    .feed-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#2a2a2a;color:#bbb;border-radius:10px;flex-direction:column;text-align:center;padding:10px;gap:8px;}
-    .image-controls,.controls{display:flex;justify-content:center;gap:10px;margin-top:15px;}
-    .control-btn{background:#333;color:white;border:none;padding:8px 15px;border-radius:5px;cursor:pointer;}
-    .control-btn:hover{background:#444;}
-    .image-counter{text-align:center;margin-top:10px;font-size:14px;color:#aaa;}
-
-    .alert-box{background:#c62828;padding:15px;border-radius:8px;font-weight:bold;margin-bottom:15px;white-space:pre-line;}
-    #map{height:300px;border-radius:10px;margin-top:15px;z-index:1;}
-    .coordinates-list{max-height:150px;overflow-y:auto;background:#252525;padding:10px;border-radius:8px;margin-top:15px;font-family:monospace;}
-    .coordinates-list div{padding:5px;border-bottom:1px solid #333;}
-    .coordinates-list div:last-child{border-bottom:none;}
-    .active-coordinate{background:#333;font-weight:bold;}
-
-    .button-container{display:flex;justify-content:center;gap:15px;margin:20px 40px 40px;}
-    .button{background:#333;border:none;color:#fff;padding:12px 30px;font-size:16px;border-radius:5px;cursor:pointer;transition:background .3s,opacity .2s;}
-    .button:hover{background:#4CAF50;}
-    .button.refresh{background:#2196F3;}
-    .button.refresh:hover{background:#0b7dda;}
-    .button:disabled{opacity:.6;cursor:not-allowed;}
-  </style>
-</head>
-<body>
-<header>
-  <div>DRONE SURVEILLANCE DASHBOARD</div>
-  <div class="header-status">
-    <div class="status-dot"></div>
-    <span id="connectionStatus">OPERATIONAL</span>
-  </div>
-</header>
-
-<div class="container">
-  <!-- Feed Card -->
-  <div class="card feed">
-    <div class="card-header">
-      <h2>Drone Feed</h2>
-      <div class="filename" id="filenameDisplay">Loading images...</div>
-    </div>
-    <div class="feed-container">
-      <div id="feedPlaceholder" class="feed-placeholder">Loading images from GitHub…</div>
-      <img id="feedImg" alt="Drone Feed Image" style="display:none;">
-    </div>
-
-    <div class="image-controls">
-      <button class="control-btn" onclick="previousImage()">Previous Image</button>
-      <button class="control-btn" onclick="nextImage()">Next Image</button>
-    </div>
-
-    <div class="image-counter" id="imageCounter">Image 0 of 0</div>
-  </div>
-
-  <!-- Alerts / GPS Card -->
-  <div class="card alerts">
-    <div class="card-header">
-      <h2>Detection Alerts</h2>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-        <div class="filename" id="gpsCount">0 coordinates</div>
-        <div class="gps-filename" id="gpsFilename" style="font-size:12px;color:#888;font-style:italic;">--</div>
-      </div>
-    </div>
-
-    <div class="alert-box">
-      <div style="display:flex;justify-content:space-between;">
-        <span>Current GPS Location:</span>
-        <span id="currentCoord">--, --</span>
-      </div>
-    </div>
-
-    <div id="map"></div>
-
-    <h3 style="margin-top:20px;">GPS Coordinates from File</h3>
-    <div class="coordinates-list" id="coordinatesList"></div>
-
-    <div class="controls">
-      <button class="control-btn" onclick="previousCoordinate()">Previous</button>
-      <button class="control-btn" onclick="nextCoordinate()">Next</button>
-      <button class="control-btn" id="autoCycleBtn" onclick="toggleAutoCycle()">Auto-Cycle: OFF</button>
-    </div>
-  </div>
-</div>
-
-<!-- Only TWO buttons -->
-<div class="button-container">
-  <button class="button" id="downloadBtn">DOWNLOAD LOG</button>
-  <button class="button refresh" id="refreshBtn">MANUAL REFRESH</button>
-</div>
-
-<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-<script>
-  // DOM refs
-  const feedImg = document.getElementById('feedImg');
-  const feedPlaceholder = document.getElementById('feedPlaceholder');
-  const filenameDisplayEl = document.getElementById('filenameDisplay');
-  const imageCounterEl = document.getElementById('imageCounter');
-  const connectionStatusEl = document.getElementById('connectionStatus');
-  const statusDot = document.querySelector('.status-dot');
-  const coordinatesListEl = document.getElementById('coordinatesList');
-  const currentCoordEl = document.getElementById('currentCoord');
-  const gpsCountEl = document.getElementById('gpsCount');
-  const gpsFilenameEl = document.getElementById('gpsFilename');
-  const autoCycleBtn = document.getElementById('autoCycleBtn');
-
-  // Config
-  const githubRepo = "Fatma-Alhosani/drone-dashboard";
-  const photosPath = "photos";
-
-  // State
-  let availableImages = [];
-  let currentImageIndex = 0;
-  let gpsCoordinates = [];
-  let currentCoordIndex = 0;
-  let autoCycleInterval = null;
-  let autoCycleEnabled = false;
-
-  // Map
-  const map = L.map('map').setView([37.7749,-122.4194],13);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution:'&copy; OpenStreetMap contributors' }).addTo(map);
-  const marker = L.marker([37.7749,-122.4194]).addTo(map);
-
-  // --- Helper to parse timestamp from filename ---
-  function tsFromName(name){
-    const m = name.match(/^(\d{4})-(\d{2})-(\d{2})\|(\d{2})-(\d{2})-(\d{2})/);
-    if (!m) return null;
-    const [ , Y, M, D, h, mnt, s ] = m.map(Number);
-    return Date.UTC(Y, M-1, D, h, mnt, s);
-  }
-
-  // Load images from GitHub and open newest
-  async function loadGitHubPhotos(){
-    feedPlaceholder.style.display='flex';
-    feedPlaceholder.textContent='Loading images from GitHub…';
-    try{
-      const apiUrl = `https://api.github.com/repos/${githubRepo}/contents/${photosPath}`;
-      const res = await fetch(apiUrl);
-      if(!res.ok) throw new Error(`GitHub error ${res.status}`);
-      const data = await res.json();
-
-      availableImages = data
-        .filter(i=>i.type==='file' && /\.(jpe?g|png|gif|bmp|webp)$/i.test(i.name))
-        .map(i=>({ name:i.name, url:i.download_url, ts:tsFromName(i.name) }));
-
-      if(!availableImages.length) throw new Error('No images found');
-
-      // sort by timestamp → newest last
-      availableImages.sort((a,b)=>{
-        if(a.ts!=null && b.ts!=null) return a.ts - b.ts;
-        if(a.ts!=null) return 1;
-        if(b.ts!=null) return -1;
-        return a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:'base'});
-      });
-
-      currentImageIndex = availableImages.length - 1; // newest
-      loadImage(availableImages[currentImageIndex]);
-      imageCounterEl.textContent = `Image ${currentImageIndex+1} of ${availableImages.length}`;
-    }catch(err){
-      feedPlaceholder.innerHTML = `<div>⚠️ ${err.message}</div>`;
-      feedImg.style.display='none';
-      filenameDisplayEl.textContent='No images';
-      imageCounterEl.textContent='Image 0 of 0';
-      connectionStatusEl.textContent='CONNECTION ISSUE';
-      statusDot.style.background='#F44336';
-    }
-  }
-
-  function loadImage(info){
-    feedPlaceholder.style.display='flex';
-    feedPlaceholder.textContent='Loading image…';
-    feedImg.style.display='none';
-    const img = new Image();
-    const cache = '?nocache='+Date.now();
-    img.onload=()=>{
-      feedImg.src=info.url+cache;
-      feedImg.style.display='block';
-      feedPlaceholder.style.display='none';
-      filenameDisplayEl.textContent=info.name;
-      imageCounterEl.textContent=`Image ${currentImageIndex+1} of ${availableImages.length}`;
-      connectionStatusEl.textContent='OPERATIONAL';
-      statusDot.style.background='#4CAF50';
-    };
-    img.onerror=()=>{
-      feedPlaceholder.innerHTML=`<div>⚠️ Failed to load ${info.name}</div>`;
-      feedImg.style.display='none';
-      filenameDisplayEl.textContent='Image error';
-      connectionStatusEl.textContent='CONNECTION ISSUE';
-      statusDot.style.background='#F44336';
-    };
-    img.src=info.url+cache;
-  }
-
-  function nextImage(){
-    if(currentImageIndex<availableImages.length-1){currentImageIndex++;loadImage(availableImages[currentImageIndex]);}
-  }
-  function previousImage(){
-    if(currentImageIndex>0){currentImageIndex--;loadImage(availableImages[currentImageIndex]);}
-  }
-
-  // GPS (demo)
-  async function loadGPSCoordinates(){
-    const text=`37.7749, -122.4194
-48.8566, 2.3522
--33.9249, 18.4241
-64.1355, -21.8954
-19.4326, -99.1332
-55.7558, 37.6173
-35.6895, 139.6917
--23.5505, -46.6333
-60.1699, 24.9384
-40.4168, -3.7038`;
-    gpsCoordinates = text.split('\n').filter(Boolean).map(line=>{
-      const [lat,lng]=line.split(',').map(x=>parseFloat(x));
-      return {lat,lng};
-    });
-    gpsCountEl.textContent=`${gpsCoordinates.length} coordinates`;
-    gpsFilenameEl.textContent='GPSTEST.txt';
-    currentCoordIndex=0;
-    displayCoordinatesList();
-    updateMapMarker(currentCoordIndex);
-  }
-  function displayCoordinatesList(){
-    coordinatesListEl.innerHTML='';
-    gpsCoordinates.forEach((c,i)=>{
-      const el=document.createElement('div');
-      el.textContent=`${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`;
-      if(i===currentCoordIndex) el.classList.add('active-coordinate');
-      coordinatesListEl.appendChild(el);
-    });
-  }
-  function updateMapMarker(i){
-    if(!gpsCoordinates.length) return;
-    const c=gpsCoordinates[i];
-    map.setView([c.lat,c.lng],13);
-    marker.setLatLng([c.lat,c.lng]);
-    currentCoordEl.textContent=`${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`;
-  }
-  function nextCoordinate(){if(!gpsCoordinates.length) return;currentCoordIndex=(currentCoordIndex+1)%gpsCoordinates.length;updateMapMarker(currentCoordIndex);displayCoordinatesList();}
-  function previousCoordinate(){if(!gpsCoordinates.length) return;currentCoordIndex=(currentCoordIndex-1+gpsCoordinates.length)%gpsCoordinates.length;updateMapMarker(currentCoordIndex);displayCoordinatesList();}
-  function toggleAutoCycle(){
-    if(autoCycleEnabled){clearInterval(autoCycleInterval);autoCycleEnabled=false;autoCycleBtn.textContent='Auto-Cycle: OFF';}
-    else{autoCycleInterval=setInterval(nextCoordinate,3000);autoCycleEnabled=true;autoCycleBtn.textContent='Auto-Cycle: ON';}
-  }
-
-  // Manual refresh
-  async function refreshAll(){await loadGitHubPhotos();await loadGPSCoordinates();}
-  async function handleRefreshClick(e){
-    const btn=e.currentTarget,txt=btn.textContent;
-    btn.disabled=true;btn.textContent='Refreshing…';
-    try{await refreshAll();}finally{btn.disabled=false;btn.textContent=txt;}
-  }
-
-  // Download log
-  function downloadLog(){
-    const log=`Drone Surveillance Logs
-
-GPS (${gpsCoordinates.length}):
-${gpsCoordinates.map(c=>`Lat: ${c.lat.toFixed(4)}, Lng: ${c.lng.toFixed(4)}`).join('\n')}
-
-Images (${availableImages.length}):
-${availableImages.map(i=>i.name).join('\n')}
-
-Current:
-Image Index: ${currentImageIndex}
-GPS Index: ${currentCoordIndex}
-Auto-Cycle: ${autoCycleEnabled?'ON':'OFF'}
-Connection: ${connectionStatusEl.textContent}`;
-    const blob=new Blob([log],{type:'text/plain'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download='drone_logs.txt';a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  // Init
-  window.addEventListener('DOMContentLoaded',()=>{
-    document.getElementById('refreshBtn').addEventListener('click',handleRefreshClick);
-    document.getElementById('downloadBtn').addEventListener('click',downloadLog);
-    loadGPSCoordinates();
-    loadGitHubPhotos(); // auto-load newest image
-  });
-</script>
-</body>
-</html>
-
