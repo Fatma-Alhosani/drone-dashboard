@@ -57,9 +57,7 @@
       <div class="filename" id="filenameDisplay">Loading images...</div>
     </div>
     <div class="feed-container">
-      <div id="feedPlaceholder" class="feed-placeholder">
-        <div>Loading images from GitHub…</div>
-      </div>
+      <div id="feedPlaceholder" class="feed-placeholder">Loading images from GitHub…</div>
       <img id="feedImg" alt="Drone Feed Image" style="display:none;">
     </div>
 
@@ -75,7 +73,7 @@
   <div class="card alerts">
     <div class="card-header">
       <h2>Detection Alerts</h2>
-      <div class="gps-info" style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
         <div class="filename" id="gpsCount">0 coordinates</div>
         <div class="gps-filename" id="gpsFilename" style="font-size:12px;color:#888;font-style:italic;">--</div>
       </div>
@@ -109,12 +107,13 @@
 
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script>
-  // Elements we still use
+  // Elements
   const feedImg = document.getElementById('feedImg');
   const feedPlaceholder = document.getElementById('feedPlaceholder');
   const filenameDisplayEl = document.getElementById('filenameDisplay');
   const imageCounterEl = document.getElementById('imageCounter');
   const connectionStatusEl = document.getElementById('connectionStatus');
+  const statusDot = document.querySelector('.status-dot');
   const coordinatesListEl = document.getElementById('coordinatesList');
   const currentCoordEl = document.getElementById('currentCoord');
   const gpsCountEl = document.getElementById('gpsCount');
@@ -128,45 +127,47 @@
   // State
   let availableImages = [];
   let currentImageIndex = 0;
-
   let gpsCoordinates = [];
   let currentCoordIndex = 0;
   let autoCycleInterval = null;
   let autoCycleEnabled = false;
 
   // Map
-  const map = L.map('map').setView([37.7749,-122.4194], 13);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors'
+  const map = L.map('map').setView([37.7749,-122.4194],13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'&copy; OpenStreetMap contributors'
   }).addTo(map);
   const marker = L.marker([37.7749,-122.4194]).addTo(map);
 
-  // GitHub Images
+  // Load images from GitHub and open the newest one by filename
   async function loadGitHubPhotos(){
-    feedPlaceholder.style.display = 'flex';
-    feedPlaceholder.textContent = 'Loading images from GitHub…';
+    feedPlaceholder.style.display='flex';
+    feedPlaceholder.textContent='Loading images from GitHub…';
     try{
       const apiUrl = `https://api.github.com/repos/${githubRepo}/contents/${photosPath}`;
       const res = await fetch(apiUrl);
       if(!res.ok) throw new Error(`GitHub error ${res.status}`);
       const data = await res.json();
 
+      // Keep only image files
       availableImages = data
         .filter(i => i.type === 'file' && /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(i.name))
-        .map(i => ({name:i.name, url:i.download_url}));
+        .map(i => ({ name: i.name, url: i.download_url }));
 
       if(!availableImages.length) throw new Error('No images found');
 
-      currentImageIndex = 0;
+      // Sort filenames so the latest (by name) is last, then open it
+      availableImages.sort((a,b)=>a.name.localeCompare(b.name, undefined, {numeric:true, sensitivity:'base'}));
+      currentImageIndex = availableImages.length - 1; // newest by name
       loadImage(availableImages[currentImageIndex]);
-      imageCounterEl.textContent = `Image ${currentImageIndex+1} of ${availableImages.length}`;
+      imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
     }catch(err){
       feedPlaceholder.innerHTML = `<div>⚠️ ${err.message}</div><div style="opacity:.8;font-size:12px">Check: ${githubRepo}/${photosPath}</div>`;
-      feedImg.style.display = 'none';
-      filenameDisplayEl.textContent = 'No images';
-      imageCounterEl.textContent = 'Image 0 of 0';
-      connectionStatusEl.textContent = 'CONNECTION ISSUE';
-      document.querySelector('.status-dot').style.background = '#F44336';
+      feedImg.style.display='none';
+      filenameDisplayEl.textContent='No images';
+      imageCounterEl.textContent='Image 0 of 0';
+      connectionStatusEl.textContent='CONNECTION ISSUE';
+      statusDot.style.background='#F44336';
     }
   }
 
@@ -180,25 +181,26 @@
 
     img.onload = ()=>{
       feedImg.src = info.url + cache;
-      feedImg.style.display = 'block';
-      feedPlaceholder.style.display = 'none';
+      feedImg.style.display='block';
+      feedPlaceholder.style.display='none';
       filenameDisplayEl.textContent = info.name;
-      imageCounterEl.textContent = `Image ${currentImageIndex+1} of ${availableImages.length}`;
-      connectionStatusEl.textContent = 'OPERATIONAL';
-      document.querySelector('.status-dot').style.background = '#4CAF50';
+      imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
+      connectionStatusEl.textContent='OPERATIONAL';
+      statusDot.style.background='#4CAF50';
     };
     img.onerror = ()=>{
-      feedPlaceholder.innerHTML = `<div>⚠️ Failed to load ${info.name}</div>`;
+      feedPlaceholder.innerHTML=`<div>⚠️ Failed to load ${info.name}</div>`;
       feedImg.style.display='none';
       filenameDisplayEl.textContent='Image error';
       connectionStatusEl.textContent='CONNECTION ISSUE';
-      document.querySelector('.status-dot').style.background='#F44336';
+      statusDot.style.background='#F44336';
     };
+
     img.src = info.url + cache;
   }
 
   function nextImage(){
-    if(!availableImages.length || currentImageIndex >= availableImages.length-1) return;
+    if(!availableImages.length || currentImageIndex >= availableImages.length - 1) return;
     currentImageIndex++;
     loadImage(availableImages[currentImageIndex]);
   }
@@ -208,7 +210,7 @@
     loadImage(availableImages[currentImageIndex]);
   }
 
-  // GPS (demo hardcoded)
+  // GPS (demo hardcoded; replace with your source when ready)
   async function loadGPSCoordinates(){
     const text = `37.7749, -122.4194
 48.8566, 2.3522
@@ -224,7 +226,6 @@
       const [lat,lng] = line.split(',').map(x=>parseFloat(x));
       return {lat,lng};
     });
-
     gpsCountEl.textContent = `${gpsCoordinates.length} coordinates`;
     gpsFilenameEl.textContent = 'GPSTEST.txt';
     currentCoordIndex = 0;
@@ -241,24 +242,22 @@
       coordinatesListEl.appendChild(el);
     });
   }
-
   function updateMapMarker(i){
     if(!gpsCoordinates.length) return;
     const c = gpsCoordinates[i];
-    map.setView([c.lat,c.lng], 13);
+    map.setView([c.lat,c.lng],13);
     marker.setLatLng([c.lat,c.lng]);
     currentCoordEl.textContent = `${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`;
   }
-
   function nextCoordinate(){
     if(!gpsCoordinates.length) return;
-    currentCoordIndex = (currentCoordIndex+1) % gpsCoordinates.length;
+    currentCoordIndex = (currentCoordIndex + 1) % gpsCoordinates.length;
     updateMapMarker(currentCoordIndex);
     displayCoordinatesList();
   }
   function previousCoordinate(){
     if(!gpsCoordinates.length) return;
-    currentCoordIndex = (currentCoordIndex-1+gpsCoordinates.length) % gpsCoordinates.length;
+    currentCoordIndex = (currentCoordIndex - 1 + gpsCoordinates.length) % gpsCoordinates.length;
     updateMapMarker(currentCoordIndex);
     displayCoordinatesList();
   }
@@ -314,7 +313,7 @@ Connection: ${connectionStatusEl.textContent}
     document.getElementById('refreshBtn').addEventListener('click', handleRefreshClick);
     document.getElementById('downloadBtn').addEventListener('click', downloadLog);
     loadGPSCoordinates();
-    loadGitHubPhotos();
+    loadGitHubPhotos(); // will open the latest image by filename
   });
 </script>
 </body>
