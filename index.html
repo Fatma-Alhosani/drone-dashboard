@@ -6,6 +6,7 @@
     <title>Drone Dashboard</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <style>
+        /* All original CSS remains unchanged */
         body {
             margin: 0;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -318,13 +319,13 @@
         </div>
     </div>
     <div class="button-container">
+        <!-- Removed "RELOAD IMAGES" button -->
         <button class="button" onclick="downloadLog()">DOWNLOAD LOG</button>
         <button class="button refresh" onclick="refreshAll()">MANUAL REFRESH</button>
-        <button class="button" onclick="reloadGitHubPhotos()">RELOAD IMAGES</button>
     </div>
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
-        // DOM elements
+        // DOM elements (unchanged)
         const feedImg = document.getElementById('feedImg');
         const feedPlaceholder = document.getElementById('feedPlaceholder');
         const coordsBox = document.getElementById('coordsBox');
@@ -341,36 +342,36 @@
         const autoCycleBtn = document.getElementById('autoCycleBtn');
         const imageCounterEl = document.getElementById('imageCounter');
         
-        // GitHub configuration
+        // GitHub configuration (unchanged)
         const githubRepo = "Fatma-Alhosani/drone-dashboard";
         const photosPath = "photos";
         
-        // GPS data
+        // GPS data (unchanged)
         let gpsCoordinates = [];
         let currentCoordIndex = 0;
         let autoCycleInterval = null;
         let autoCycleEnabled = false;
         
-        // Image data
+        // Image data (unchanged)
         let availableImages = [];
         let currentImageIndex = 0;
         let previousImageCount = 0; // Tracks previous image count for new detection
-
-        // Map initialization
+        
+        // Map initialization (unchanged)
         const map = L.map('map').setView([37.7749, -122.4194], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
         const marker = L.marker([37.7749, -122.4194]).addTo(map);
         
-        // Function to update timestamp
+        // Function to update timestamp (unchanged)
         function updateTimestamp(element) {
             const now = new Date();
             const timeString = now.toLocaleTimeString();
             element.textContent = `Last updated: ${timeString}`;
         }
         
-        // Load images from GitHub repository
+        // Load images from GitHub repository (unchanged)
         async function loadGitHubPhotos() {
             feedPlaceholder.style.display = 'flex';
             feedPlaceholder.innerHTML = '<div class="loading-spinner"></div>';
@@ -387,7 +388,7 @@
                 
                 const data = await response.json();
                 
-                // Filter and map images
+                // Filter and map images (unchanged)
                 availableImages = data
                     .filter(item => 
                         item.type === 'file' && 
@@ -403,7 +404,7 @@
                     throw new Error('No images found in the specified folder');
                 }
                 
-                // Retrieve and validate saved index
+                // Retrieve and validate saved index (unchanged)
                 const savedIndex = parseInt(localStorage.getItem('currentImageIndex'));
                 if (!isNaN(savedIndex) && savedIndex >= 0 && savedIndex < availableImages.length) {
                     currentImageIndex = savedIndex;
@@ -411,18 +412,18 @@
                     currentImageIndex = 0; // Default to first image
                 }
                 
-                // Check for new images
+                // Check for new images (unchanged)
                 if (availableImages.length > previousImageCount) {
                     imageStatusEl.textContent = `New images detected! Loaded ${availableImages.length} images from GitHub`;
                 } else {
                     imageStatusEl.textContent = `Loaded ${availableImages.length} images from GitHub`;
                 }
                 
-                // Load current image and update counter
+                // Load current image and update counter (unchanged)
                 loadImage(availableImages[currentImageIndex]);
                 imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
                 
-                // Update previous count
+                // Update previous count (unchanged)
                 previousImageCount = availableImages.length;
                 console.log('loadGitHubPhotos completed'); // Debug
                 
@@ -432,7 +433,7 @@
                 currentImageIndex = -1;
                 localStorage.removeItem('currentImageIndex');
                 
-                // Update UI on error
+                // Update UI on error (unchanged)
                 feedPlaceholder.innerHTML = `
                     <div class="placeholder-image">
                         <div style="font-size: 18px; margin-bottom: 10px;">⚠️ Image Load Error</div>
@@ -447,17 +448,12 @@
             }
         }
         
-        // Reload images (direct call to loadGitHubPhotos)
-        function reloadGitHubPhotos() {
-            loadGitHubPhotos();
-        }
-        
-        // Load GPS coordinates from hardcoded text (demo)
+        // Load GPS coordinates from hardcoded text (demo) (unchanged)
         async function loadGPSCoordinates() {
             try {
                 coordsStatusEl.textContent = 'Loading GPS data...';
                 
-                // Hardcoded coordinates (replace with actual file loading if needed)
+                // Hardcoded coordinates (replace with actual file loading if needed) (unchanged)
                 const coordinatesText = `37.7749, -122.4194
 48.8566, 2.3522
 -33.9249, 18.4241
@@ -494,7 +490,7 @@
             }
         }
         
-        // Display coordinates list
+        // Display coordinates list (unchanged)
         function displayCoordinatesList() {
             coordinatesListEl.innerHTML = '';
             gpsCoordinates.forEach((coord, index) => {
@@ -508,7 +504,7 @@
             active?.scrollIntoView({ behavior: 'smooth' });
         }
         
-        // Update map marker position
+        // Update map marker position (unchanged)
         function updateMapMarker(index) {
             if (!gpsCoordinates.length) return;
             const coord = gpsCoordinates[index];
@@ -517,7 +513,7 @@
             currentCoordEl.textContent = `${coord.lat.toFixed(4)}, ${coord.lng.toFixed(4)}`;
         }
         
-        // Next GPS coordinate
+        // Next GPS coordinate (unchanged)
         function nextCoordinate() {
             if (!gpsCoordinates.length) return;
             currentCoordIndex = (currentCoordIndex + 1) % gpsCoordinates.length;
@@ -526,7 +522,7 @@
             updateTimestamp(coordsUpdatedEl);
         }
         
-        // Previous GPS coordinate
+        // Previous GPS coordinate (unchanged)
         function previousCoordinate() {
             if (!gpsCoordinates.length) return;
             currentCoordIndex = (currentCoordIndex - 1 + gpsCoordinates.length) % gpsCoordinates.length;
@@ -535,7 +531,7 @@
             updateTimestamp(coordsUpdatedEl);
         }
         
-        // Toggle auto-cycle for GPS
+        // Toggle auto-cycle for GPS (unchanged)
         function toggleAutoCycle() {
             if (autoCycleEnabled) {
                 clearInterval(autoCycleInterval);
@@ -548,7 +544,7 @@
             }
         }
         
-        // Next image (prevents cycling back)
+        // Next image (prevents cycling back) (unchanged)
         function nextImage() {
             if (!availableImages.length || currentImageIndex >= availableImages.length - 1) return;
             currentImageIndex++;
@@ -557,7 +553,7 @@
             updateTimestamp(lastUpdatedEl);
         }
         
-        // Previous image (prevents cycling back)
+        // Previous image (prevents cycling back) (unchanged)
         function previousImage() {
             if (!availableImages.length || currentImageIndex <= 0) return;
             currentImageIndex--;
@@ -566,7 +562,7 @@
             updateTimestamp(lastUpdatedEl);
         }
         
-        // Load specific image (handles loading state)
+        // Load specific image (handles loading state) (unchanged)
         function loadImage(imageInfo) {
             feedPlaceholder.style.display = 'flex';
             feedImg.style.display = 'none';
@@ -605,18 +601,18 @@
             img.src = imageInfo.url + cacheBuster;
         }
         
-        // Manual refresh: reload images and GPS, check for new images
+        // Manual refresh: reload images and GPS, check for new images (unchanged)
         async function refreshAll() {
             console.log('refreshAll started'); // Debug
             
             try {
-                // Reload images first
+                // Reload images first (unchanged)
                 await loadGitHubPhotos();
                 
-                // Reload GPS coordinates
+                // Reload GPS coordinates (unchanged)
                 await loadGPSCoordinates();
                 
-                // Update timestamps for both sections
+                // Update timestamps for both sections (unchanged)
                 updateTimestamp(lastUpdatedEl);
                 updateTimestamp(coordsUpdatedEl);
                 
@@ -625,8 +621,7 @@
                 console.error('Refresh failed:', error);
             }
         }
-
-        // Download log function
+        // Download log function (unchanged)
         function downloadLog() {
             const now = new Date();
             const logContent = `Drone Surveillance Logs\n=======================\nGenerated at: ${now.toLocaleString()}\n\n` +
@@ -653,18 +648,17 @@
                 URL.revokeObjectURL(url);
             }, 0);
         }
-
-        // Initialize on page load
+        // Initialize on page load (unchanged)
         window.onload = async () => {
             try {
                 // Initial load of GPS and images
                 await loadGPSCoordinates();
                 await loadGitHubPhotos();
                 
-                // Initialize previousImageCount with initial image count
+                // Initialize previousImageCount with initial image count (unchanged)
                 previousImageCount = availableImages.length;
                 
-                // Update timestamps
+                // Update timestamps (unchanged)
                 updateTimestamp(lastUpdatedEl);
                 updateTimestamp(coordsUpdatedEl);
             } catch (error) {
