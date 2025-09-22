@@ -107,7 +107,7 @@
 
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script>
-  // Elements
+  // DOM refs
   const feedImg = document.getElementById('feedImg');
   const feedPlaceholder = document.getElementById('feedPlaceholder');
   const filenameDisplayEl = document.getElementById('filenameDisplay');
@@ -134,12 +134,18 @@
 
   // Map
   const map = L.map('map').setView([37.7749,-122.4194],13);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-    attribution:'&copy; OpenStreetMap contributors'
-  }).addTo(map);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution:'&copy; OpenStreetMap contributors' }).addTo(map);
   const marker = L.marker([37.7749,-122.4194]).addTo(map);
 
-  // Load images from GitHub and open the newest one by filename
+  // --- Helper to parse timestamp from filename ---
+  function tsFromName(name){
+    const m = name.match(/^(\d{4})-(\d{2})-(\d{2})\|(\d{2})-(\d{2})-(\d{2})/);
+    if (!m) return null;
+    const [ , Y, M, D, h, mnt, s ] = m.map(Number);
+    return Date.UTC(Y, M-1, D, h, mnt, s);
+  }
+
+  // Load images from GitHub and open newest
   async function loadGitHubPhotos(){
     feedPlaceholder.style.display='flex';
     feedPlaceholder.textContent='Loading images from GitHub…';
@@ -149,20 +155,25 @@
       if(!res.ok) throw new Error(`GitHub error ${res.status}`);
       const data = await res.json();
 
-      // Keep only image files
       availableImages = data
-        .filter(i => i.type === 'file' && /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(i.name))
-        .map(i => ({ name: i.name, url: i.download_url }));
+        .filter(i=>i.type==='file' && /\.(jpe?g|png|gif|bmp|webp)$/i.test(i.name))
+        .map(i=>({ name:i.name, url:i.download_url, ts:tsFromName(i.name) }));
 
       if(!availableImages.length) throw new Error('No images found');
 
-      // Sort filenames so the latest (by name) is last, then open it
-      availableImages.sort((a,b)=>a.name.localeCompare(b.name, undefined, {numeric:true, sensitivity:'base'}));
-      currentImageIndex = availableImages.length - 1; // newest by name
+      // sort by timestamp → newest last
+      availableImages.sort((a,b)=>{
+        if(a.ts!=null && b.ts!=null) return a.ts - b.ts;
+        if(a.ts!=null) return 1;
+        if(b.ts!=null) return -1;
+        return a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:'base'});
+      });
+
+      currentImageIndex = availableImages.length - 1; // newest
       loadImage(availableImages[currentImageIndex]);
-      imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
+      imageCounterEl.textContent = `Image ${currentImageIndex+1} of ${availableImages.length}`;
     }catch(err){
-      feedPlaceholder.innerHTML = `<div>⚠️ ${err.message}</div><div style="opacity:.8;font-size:12px">Check: ${githubRepo}/${photosPath}</div>`;
+      feedPlaceholder.innerHTML = `<div>⚠️ ${err.message}</div>`;
       feedImg.style.display='none';
       filenameDisplayEl.textContent='No images';
       imageCounterEl.textContent='Image 0 of 0';
@@ -175,44 +186,37 @@
     feedPlaceholder.style.display='flex';
     feedPlaceholder.textContent='Loading image…';
     feedImg.style.display='none';
-
     const img = new Image();
-    const cache = '?nocache=' + Date.now();
-
-    img.onload = ()=>{
-      feedImg.src = info.url + cache;
+    const cache = '?nocache='+Date.now();
+    img.onload=()=>{
+      feedImg.src=info.url+cache;
       feedImg.style.display='block';
       feedPlaceholder.style.display='none';
-      filenameDisplayEl.textContent = info.name;
-      imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
+      filenameDisplayEl.textContent=info.name;
+      imageCounterEl.textContent=`Image ${currentImageIndex+1} of ${availableImages.length}`;
       connectionStatusEl.textContent='OPERATIONAL';
       statusDot.style.background='#4CAF50';
     };
-    img.onerror = ()=>{
+    img.onerror=()=>{
       feedPlaceholder.innerHTML=`<div>⚠️ Failed to load ${info.name}</div>`;
       feedImg.style.display='none';
       filenameDisplayEl.textContent='Image error';
       connectionStatusEl.textContent='CONNECTION ISSUE';
       statusDot.style.background='#F44336';
     };
-
-    img.src = info.url + cache;
+    img.src=info.url+cache;
   }
 
   function nextImage(){
-    if(!availableImages.length || currentImageIndex >= availableImages.length - 1) return;
-    currentImageIndex++;
-    loadImage(availableImages[currentImageIndex]);
+    if(currentImageIndex<availableImages.length-1){currentImageIndex++;loadImage(availableImages[currentImageIndex]);}
   }
   function previousImage(){
-    if(!availableImages.length || currentImageIndex <= 0) return;
-    currentImageIndex--;
-    loadImage(availableImages[currentImageIndex]);
+    if(currentImageIndex>0){currentImageIndex--;loadImage(availableImages[currentImageIndex]);}
   }
 
-  // GPS (demo hardcoded; replace with your source when ready)
+  // GPS (demo)
   async function loadGPSCoordinates(){
-    const text = `37.7749, -122.4194
+    const text=`37.7749, -122.4194
 48.8566, 2.3522
 -33.9249, 18.4241
 64.1355, -21.8954
@@ -223,71 +227,49 @@
 60.1699, 24.9384
 40.4168, -3.7038`;
     gpsCoordinates = text.split('\n').filter(Boolean).map(line=>{
-      const [lat,lng] = line.split(',').map(x=>parseFloat(x));
+      const [lat,lng]=line.split(',').map(x=>parseFloat(x));
       return {lat,lng};
     });
-    gpsCountEl.textContent = `${gpsCoordinates.length} coordinates`;
-    gpsFilenameEl.textContent = 'GPSTEST.txt';
-    currentCoordIndex = 0;
+    gpsCountEl.textContent=`${gpsCoordinates.length} coordinates`;
+    gpsFilenameEl.textContent='GPSTEST.txt';
+    currentCoordIndex=0;
     displayCoordinatesList();
     updateMapMarker(currentCoordIndex);
   }
-
   function displayCoordinatesList(){
-    coordinatesListEl.innerHTML = '';
+    coordinatesListEl.innerHTML='';
     gpsCoordinates.forEach((c,i)=>{
-      const el = document.createElement('div');
-      el.textContent = `${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`;
+      const el=document.createElement('div');
+      el.textContent=`${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`;
       if(i===currentCoordIndex) el.classList.add('active-coordinate');
       coordinatesListEl.appendChild(el);
     });
   }
   function updateMapMarker(i){
     if(!gpsCoordinates.length) return;
-    const c = gpsCoordinates[i];
+    const c=gpsCoordinates[i];
     map.setView([c.lat,c.lng],13);
     marker.setLatLng([c.lat,c.lng]);
-    currentCoordEl.textContent = `${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`;
+    currentCoordEl.textContent=`${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`;
   }
-  function nextCoordinate(){
-    if(!gpsCoordinates.length) return;
-    currentCoordIndex = (currentCoordIndex + 1) % gpsCoordinates.length;
-    updateMapMarker(currentCoordIndex);
-    displayCoordinatesList();
-  }
-  function previousCoordinate(){
-    if(!gpsCoordinates.length) return;
-    currentCoordIndex = (currentCoordIndex - 1 + gpsCoordinates.length) % gpsCoordinates.length;
-    updateMapMarker(currentCoordIndex);
-    displayCoordinatesList();
-  }
+  function nextCoordinate(){if(!gpsCoordinates.length) return;currentCoordIndex=(currentCoordIndex+1)%gpsCoordinates.length;updateMapMarker(currentCoordIndex);displayCoordinatesList();}
+  function previousCoordinate(){if(!gpsCoordinates.length) return;currentCoordIndex=(currentCoordIndex-1+gpsCoordinates.length)%gpsCoordinates.length;updateMapMarker(currentCoordIndex);displayCoordinatesList();}
   function toggleAutoCycle(){
-    if(autoCycleEnabled){
-      clearInterval(autoCycleInterval);
-      autoCycleEnabled=false;
-      autoCycleBtn.textContent='Auto-Cycle: OFF';
-    }else{
-      autoCycleInterval=setInterval(nextCoordinate,3000);
-      autoCycleEnabled=true;
-      autoCycleBtn.textContent='Auto-Cycle: ON';
-    }
+    if(autoCycleEnabled){clearInterval(autoCycleInterval);autoCycleEnabled=false;autoCycleBtn.textContent='Auto-Cycle: OFF';}
+    else{autoCycleInterval=setInterval(nextCoordinate,3000);autoCycleEnabled=true;autoCycleBtn.textContent='Auto-Cycle: ON';}
   }
 
-  // Manual refresh (images + GPS)
-  async function refreshAll(){
-    await loadGitHubPhotos();
-    await loadGPSCoordinates();
-  }
+  // Manual refresh
+  async function refreshAll(){await loadGitHubPhotos();await loadGPSCoordinates();}
   async function handleRefreshClick(e){
-    const btn=e.currentTarget, txt=btn.textContent;
-    btn.disabled=true; btn.textContent='Refreshing…';
-    try{ await refreshAll(); } finally { btn.disabled=false; btn.textContent=txt; }
+    const btn=e.currentTarget,txt=btn.textContent;
+    btn.disabled=true;btn.textContent='Refreshing…';
+    try{await refreshAll();}finally{btn.disabled=false;btn.textContent=txt;}
   }
 
   // Download log
   function downloadLog(){
-    const log =
-`Drone Surveillance Logs
+    const log=`Drone Surveillance Logs
 
 GPS (${gpsCoordinates.length}):
 ${gpsCoordinates.map(c=>`Lat: ${c.lat.toFixed(4)}, Lng: ${c.lng.toFixed(4)}`).join('\n')}
@@ -298,22 +280,20 @@ ${availableImages.map(i=>i.name).join('\n')}
 Current:
 Image Index: ${currentImageIndex}
 GPS Index: ${currentCoordIndex}
-Auto-Cycle: ${autoCycleEnabled ? 'ON' : 'OFF'}
-Connection: ${connectionStatusEl.textContent}
-`;
-    const blob = new Blob([log], {type:'text/plain'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'drone_logs.txt'; a.click();
+Auto-Cycle: ${autoCycleEnabled?'ON':'OFF'}
+Connection: ${connectionStatusEl.textContent}`;
+    const blob=new Blob([log],{type:'text/plain'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='drone_logs.txt';a.click();
     URL.revokeObjectURL(url);
   }
 
-  // Wire buttons + initial load
-  window.addEventListener('DOMContentLoaded', ()=>{
-    document.getElementById('refreshBtn').addEventListener('click', handleRefreshClick);
-    document.getElementById('downloadBtn').addEventListener('click', downloadLog);
+  // Init
+  window.addEventListener('DOMContentLoaded',()=>{
+    document.getElementById('refreshBtn').addEventListener('click',handleRefreshClick);
+    document.getElementById('downloadBtn').addEventListener('click',downloadLog);
     loadGPSCoordinates();
-    loadGitHubPhotos(); // will open the latest image by filename
+    loadGitHubPhotos(); // auto-load newest image
   });
 </script>
 </body>
