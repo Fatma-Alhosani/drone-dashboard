@@ -1,630 +1,255 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Drone Dashboard</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
-    <style>
-        body {
-            margin: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #111;
-            color: #fff;
-            overflow-x: hidden;
-        }
-        header {
-            background: #000;
-            padding: 15px 30px;
-            font-size: 20px;
-            font-weight: bold;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-        }
-        .header-status {
-            font-size: 14px;
-            color: #4CAF50;
-            display: flex;
-            align-items: center;
-        }
-        .status-dot {
-            width: 10px;
-            height: 10px;
-            background: #4CAF50;
-            border-radius: 50%;
-            margin-right: 8px;
-        }
-        .container {
-            display: flex;
-            justify-content: space-around;
-            margin: 30px;
-            gap: 30px;
-            flex-wrap: wrap;
-        }
-        .card {
-            background: #1e1e1e;
-            border-radius: 10px;
-            padding: 20px;
-            width: min(560px, 100%);
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
-        }
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-            border-bottom: 1px solid #333;
-            padding-bottom: 10px;
-        }
-        .card h2 {
-            margin: 0;
-            font-size: 22px;
-            color: #4CAF50;
-        }
-        .filename {
-            font-size: 14px;
-            color: #aaa;
-            background: #333;
-            padding: 4px 10px;
-            border-radius: 4px;
-            max-width: 220px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        /* Feed area */
-        .feed-container {
-            position: relative;
-            width: 100%;
-            height: 320px; /* medium */
-            border-radius: 10px;
-            overflow: hidden;
-            background: #151515; /* softer than pure black */
-        }
-        .feed img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain; /* keeps full frame visible */
-            border-radius: 10px;
-            display: block;
-            transition: opacity 0.25s ease;
-        }
-        .feed-placeholder {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #2a2a2a;
-            color: #888;
-            border-radius: 10px;
-            flex-direction: column;
-            text-align: center;
-            padding: 10px;
-        }
-        .alert-box {
-            background: #c62828;
-            padding: 15px;
-            border-radius: 8px;
-            font-weight: bold;
-            margin-bottom: 15px;
-            white-space: pre-line;
-        }
-        #map {
-            height: 300px;
-            border-radius: 10px;
-            margin-top: 15px;
-            z-index: 1;
-        }
-        .coordinates-list {
-            max-height: 150px;
-            overflow-y: auto;
-            background: #252525;
-            padding: 10px;
-            border-radius: 8px;
-            margin-top: 15px;
-            font-family: monospace;
-        }
-        .coordinates-list div {
-            padding: 5px;
-            border-bottom: 1px solid #333;
-        }
-        .coordinates-list div:last-child {
-            border-bottom: none;
-        }
-        .button-container {
-            text-align: center;
-            margin: 20px 40px 40px;
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-        }
-        .button {
-            background: #333;
-            border: none;
-            color: #fff;
-            padding: 12px 30px;
-            font-size: 16px;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background 0.3s, opacity 0.2s;
-        }
-        .button:hover { background: #4CAF50; }
-        .button.refresh { background: #2196F3; }
-        .button.refresh:hover { background: #0b7dda; }
-        .button:disabled { opacity: 0.6; cursor: not-allowed; }
-        .status-bar {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 15px;
-            font-size: 14px;
-            color: #aaa;
-        }
-        .last-updated { font-style: italic; }
-        .loading-spinner {
-            width: 40px;
-            height: 40px;
-            border: 4px solid #333;
-            border-top: 4px solid #4CAF50;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 20px auto 10px;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg) } 100% { transform: rotate(360deg) } }
-        .controls, .image-controls {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 15px;
-        }
-        .control-btn {
-            background: #333;
-            color: white;
-            border: none;
-            padding: 8px 15px;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        .control-btn:hover { background: #444; }
-        .image-counter {
-            text-align: center;
-            margin-top: 10px;
-            font-size: 14px;
-            color: #aaa;
-        }
-        .gps-info {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-end;
-            gap: 4px;
-        }
-        .gps-filename {
-            font-size: 12px;
-            color: #888;
-            font-style: italic;
-        }
-        .active-coordinate {
-            background: #333 !important;
-            font-weight: bold !important;
-        }
-        .github-info {
-            text-align: center;
-            margin: 10px 0;
-            font-size: 12px;
-            color: #666;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Drone Dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+  <style>
+    body {margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#111;color:#fff;overflow-x:hidden;}
+    header{background:#000;padding:15px 30px;font-size:20px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 10px rgba(0,0,0,.5);}
+    .header-status{font-size:14px;color:#4CAF50;display:flex;align-items:center;}
+    .status-dot{width:10px;height:10px;background:#4CAF50;border-radius:50%;margin-right:8px;}
+    .container{display:flex;justify-content:space-around;margin:30px;gap:30px;flex-wrap:wrap;}
+    .card{background:#1e1e1e;border-radius:10px;padding:20px;width:min(560px,100%);box-shadow:0 0 15px rgba(0,0,0,.4);}
+    .card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;border-bottom:1px solid #333;padding-bottom:10px;}
+    .card h2{margin:0;font-size:22px;color:#4CAF50;}
+    .filename{font-size:14px;color:#aaa;background:#333;padding:4px 10px;border-radius:4px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .feed-container{position:relative;width:100%;height:320px;border-radius:10px;overflow:hidden;background:#151515;}
+    .feed img{width:100%;height:100%;object-fit:contain;border-radius:10px;display:block;transition:opacity .25s ease;}
+    .feed-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#2a2a2a;color:#888;border-radius:10px;flex-direction:column;text-align:center;padding:10px;}
+    .alert-box{background:#c62828;padding:15px;border-radius:8px;font-weight:bold;margin-bottom:15px;white-space:pre-line;}
+    #map{height:300px;border-radius:10px;margin-top:15px;z-index:1;}
+    .coordinates-list{max-height:150px;overflow-y:auto;background:#252525;padding:10px;border-radius:8px;margin-top:15px;font-family:monospace;}
+    .coordinates-list div{padding:5px;border-bottom:1px solid #333;}
+    .coordinates-list div:last-child{border-bottom:none;}
+    .button-container{text-align:center;margin:20px 40px 40px;display:flex;justify-content:center;gap:15px;}
+    .button{background:#333;border:none;color:#fff;padding:12px 30px;font-size:16px;border-radius:5px;cursor:pointer;transition:background .3s,opacity .2s;}
+    .button:hover{background:#4CAF50;}
+    .button.refresh{background:#2196F3;}
+    .button.refresh:hover{background:#0b7dda;}
+    .button:disabled{opacity:.6;cursor:not-allowed;}
+    .controls,.image-controls{display:flex;justify-content:center;gap:10px;margin-top:15px;}
+    .control-btn{background:#333;color:white;border:none;padding:8px 15px;border-radius:5px;cursor:pointer;}
+    .control-btn:hover{background:#444;}
+    .image-counter{text-align:center;margin-top:10px;font-size:14px;color:#aaa;}
+    .gps-info{display:flex;flex-direction:column;align-items:flex-end;gap:4px;}
+    .gps-filename{font-size:12px;color:#888;font-style:italic;}
+    .active-coordinate{background:#333 !important;font-weight:bold !important;}
+  </style>
 </head>
 <body>
 <header>
-    <div>DRONE SURVEILLANCE DASHBOARD</div>
-    <div class="header-status">
-        <div class="status-dot"></div>
-        <span id="connectionStatus">OPERATIONAL</span>
-    </div>
+  <div>DRONE SURVEILLANCE DASHBOARD</div>
+  <div class="header-status">
+    <div class="status-dot"></div>
+    <span id="connectionStatus">OPERATIONAL</span>
+  </div>
 </header>
 
 <div class="container">
-    <!-- Feed Card -->
-    <div class="card feed">
-        <div class="card-header">
-            <h2>Drone Feed</h2>
-            <div class="filename" id="filenameDisplay">Loading images...</div>
-        </div>
-        <div class="feed-container">
-            <div id="feedPlaceholder" class="feed-placeholder">
-                <div class="loading-spinner"></div>
-                <div>Loading images from GitHub...</div>
-            </div>
-            <img id="feedImg" alt="Drone Feed Image" style="display:none;">
-        </div>
-
-        <div class="image-controls">
-            <button class="control-btn" onclick="previousImage()">Previous Image</button>
-            <button class="control-btn" onclick="nextImage()">Next Image</button>
-        </div>
-
-        <div class="image-counter" id="imageCounter">Image 0 of 0</div>
-
-        <div class="status-bar">
-            <span class="last-updated" id="lastUpdated">Last updated: --:--:--</span>
-            <span id="imageStatus">Loading images from GitHub...</span>
-        </div>
+  <!-- Feed Card -->
+  <div class="card feed">
+    <div class="card-header">
+      <h2>Drone Feed</h2>
+      <div class="filename" id="filenameDisplay">Loading images...</div>
+    </div>
+    <div class="feed-container">
+      <div id="feedPlaceholder" class="feed-placeholder">
+        <div>Loading images from GitHub...</div>
+      </div>
+      <img id="feedImg" alt="Drone Feed Image" style="display:none;">
     </div>
 
-    <!-- Alerts / GPS Card -->
-    <div class="card alerts">
-        <div class="card-header">
-            <h2>Detection Alerts</h2>
-            <div class="gps-info">
-                <div class="filename" id="gpsCount">0 coordinates</div>
-                <div class="gps-filename" id="gpsFilename">--</div>
-            </div>
-        </div>
-
-        <div class="alert-box" id="coordsBox">
-            <div style="display: flex; justify-content: space-between;">
-                <span>Current GPS Location:</span>
-                <span id="currentCoord">--, --</span>
-            </div>
-        </div>
-
-        <div id="map"></div>
-
-        <h3 style="margin-top: 20px;">GPS Coordinates from File</h3>
-        <div class="coordinates-list" id="coordinatesList"></div>
-
-        <div class="controls">
-            <button class="control-btn" onclick="previousCoordinate()">Previous</button>
-            <button class="control-btn" onclick="nextCoordinate()">Next</button>
-            <button class="control-btn" id="autoCycleBtn" onclick="toggleAutoCycle()">Auto-Cycle: OFF</button>
-        </div>
-
-        <div class="status-bar">
-            <span class="last-updated" id="coordsUpdated">Last updated: --:--:--</span>
-            <span id="coordsStatus">Idle</span>
-        </div>
+    <div class="image-controls">
+      <button class="control-btn" onclick="previousImage()">Previous Image</button>
+      <button class="control-btn" onclick="nextImage()">Next Image</button>
     </div>
+
+    <div class="image-counter" id="imageCounter">Image 0 of 0</div>
+
+    <div class="status-bar">
+      <span id="imageStatus">Loading images from GitHub...</span>
+    </div>
+  </div>
+
+  <!-- Alerts / GPS Card -->
+  <div class="card alerts">
+    <div class="card-header">
+      <h2>Detection Alerts</h2>
+      <div class="gps-info">
+        <div class="filename" id="gpsCount">0 coordinates</div>
+        <div class="gps-filename" id="gpsFilename">--</div>
+      </div>
+    </div>
+
+    <div class="alert-box" id="coordsBox">
+      <div style="display: flex; justify-content: space-between;">
+        <span>Current GPS Location:</span>
+        <span id="currentCoord">--, --</span>
+      </div>
+    </div>
+
+    <div id="map"></div>
+
+    <h3 style="margin-top: 20px;">GPS Coordinates from File</h3>
+    <div class="coordinates-list" id="coordinatesList"></div>
+
+    <div class="controls">
+      <button class="control-btn" onclick="previousCoordinate()">Previous</button>
+      <button class="control-btn" onclick="nextCoordinate()">Next</button>
+      <button class="control-btn" id="autoCycleBtn" onclick="toggleAutoCycle()">Auto-Cycle: OFF</button>
+    </div>
+
+    <div class="status-bar">
+      <span id="coordsStatus">Idle</span>
+    </div>
+  </div>
 </div>
 
-<!-- Only TWO buttons: Manual Refresh + Download Log -->
+<!-- Only TWO buttons -->
 <div class="button-container">
-    <button class="button refresh" id="refreshBtn" title="Reload images + GPS">
-        MANUAL REFRESH
-    </button>
-    <button class="button" id="downloadBtn" title="Save current state to a text file">
-        DOWNLOAD LOG
-    </button>
+  <button class="button refresh" id="refreshBtn">MANUAL REFRESH</button>
+  <button class="button" id="downloadBtn">DOWNLOAD LOG</button>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script>
-    // DOM elements
-    const feedImg = document.getElementById('feedImg');
-    const feedPlaceholder = document.getElementById('feedPlaceholder');
-    const lastUpdatedEl = document.getElementById('lastUpdated');
-    const coordsUpdatedEl = document.getElementById('coordsUpdated');
-    const imageStatusEl = document.getElementById('imageStatus');
-    const coordsStatusEl = document.getElementById('coordsStatus');
-    const connectionStatusEl = document.getElementById('connectionStatus');
-    const filenameDisplayEl = document.getElementById('filenameDisplay');
-    const coordinatesListEl = document.getElementById('coordinatesList');
-    const currentCoordEl = document.getElementById('currentCoord');
-    const gpsCountEl = document.getElementById('gpsCount');
-    const gpsFilenameEl = document.getElementById('gpsFilename');
-    const autoCycleBtn = document.getElementById('autoCycleBtn');
-    const imageCounterEl = document.getElementById('imageCounter');
+  // Elements
+  const feedImg=document.getElementById('feedImg');
+  const feedPlaceholder=document.getElementById('feedPlaceholder');
+  const imageStatusEl=document.getElementById('imageStatus');
+  const connectionStatusEl=document.getElementById('connectionStatus');
+  const filenameDisplayEl=document.getElementById('filenameDisplay');
+  const coordinatesListEl=document.getElementById('coordinatesList');
+  const currentCoordEl=document.getElementById('currentCoord');
+  const gpsCountEl=document.getElementById('gpsCount');
+  const gpsFilenameEl=document.getElementById('gpsFilename');
+  const autoCycleBtn=document.getElementById('autoCycleBtn');
+  const imageCounterEl=document.getElementById('imageCounter');
+  const coordsStatusEl=document.getElementById('coordsStatus');
 
-    // GitHub configuration
-    const githubRepo = "Fatma-Alhosani/drone-dashboard";
-    const photosPath = "photos";
+  // Config
+  const githubRepo="Fatma-Alhosani/drone-dashboard";
+  const photosPath="photos";
 
-    // GPS data
-    let gpsCoordinates = [];
-    let currentCoordIndex = 0;
-    let autoCycleInterval = null;
-    let autoCycleEnabled = false;
+  // State
+  let gpsCoordinates=[],currentCoordIndex=0,autoCycleInterval=null,autoCycleEnabled=false;
+  let availableImages=[],currentImageIndex=0,previousImageCount=0;
 
-    // Image data
-    let availableImages = [];
-    let currentImageIndex = 0;
-    let previousImageCount = 0; // Tracks previous image count for new detection
+  // Map
+  const map=L.map('map').setView([37.7749,-122.4194],13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(map);
+  const marker=L.marker([37.7749,-122.4194]).addTo(map);
 
-    // Map initialization
-    const map = L.map('map').setView([37.7749, -122.4194], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map);
-    const marker = L.marker([37.7749, -122.4194]).addTo(map);
-
-    // Helpers
-    function updateTimestamp(element) {
-        const now = new Date();
-        const timeString = now.toLocaleTimeString();
-        element.textContent = `Last updated: ${timeString}`;
+  // GitHub Images
+  async function loadGitHubPhotos(){
+    feedPlaceholder.style.display='flex';
+    imageStatusEl.textContent='Fetching images...';
+    try{
+      const apiUrl=`https://api.github.com/repos/${githubRepo}/contents/${photosPath}`;
+      const res=await fetch(apiUrl);
+      if(!res.ok) throw new Error("GitHub error "+res.status);
+      const data=await res.json();
+      availableImages=data.filter(i=>i.type==='file' && /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(i.name))
+                          .map(i=>({name:i.name,url:i.download_url,path:i.path}));
+      if(!availableImages.length) throw new Error("No images found");
+      currentImageIndex=0;
+      loadImage(availableImages[currentImageIndex]);
+      imageCounterEl.textContent=`Image ${currentImageIndex+1} of ${availableImages.length}`;
+      imageStatusEl.textContent=`Loaded ${availableImages.length} images`;
+    }catch(err){
+      feedPlaceholder.innerHTML=`<div>⚠️ ${err.message}</div>`;
+      feedImg.style.display='none';
+      filenameDisplayEl.textContent='No images';
+      imageCounterEl.textContent='Image 0 of 0';
+      imageStatusEl.textContent='Error loading images';
     }
+  }
+  function loadImage(info){
+    feedPlaceholder.style.display='flex';feedImg.style.display='none';
+    imageStatusEl.textContent='Loading image...';
+    const img=new Image();const cache='?nocache='+Date.now();
+    img.onload=()=>{
+      feedImg.src=info.url+cache;
+      feedImg.style.display='block';feedPlaceholder.style.display='none';
+      filenameDisplayEl.textContent=info.name;
+      imageCounterEl.textContent=`Image ${currentImageIndex+1} of ${availableImages.length}`;
+      imageStatusEl.textContent='Image loaded';
+      connectionStatusEl.textContent='OPERATIONAL';
+      document.querySelector('.status-dot').style.background='#4CAF50';
+    };
+    img.onerror=()=>{
+      feedPlaceholder.innerHTML=`<div>⚠️ Failed to load ${info.name}</div>`;
+      feedImg.style.display='none';filenameDisplayEl.textContent='Error';
+      imageStatusEl.textContent='Load failed';connectionStatusEl.textContent='CONNECTION ISSUE';
+      document.querySelector('.status-dot').style.background='#F44336';
+    };
+    img.src=info.url+cache;
+  }
+  function nextImage(){if(currentImageIndex<availableImages.length-1){currentImageIndex++;loadImage(availableImages[currentImageIndex]);}}
+  function previousImage(){if(currentImageIndex>0){currentImageIndex--;loadImage(availableImages[currentImageIndex]);}}
 
-    // Load images from GitHub repository
-    async function loadGitHubPhotos() {
-        feedPlaceholder.style.display = 'flex';
-        feedPlaceholder.innerHTML = '<div class="loading-spinner"></div><div>Loading images from GitHub...</div>';
-        imageStatusEl.textContent = 'Fetching image list from GitHub...';
-
-        try {
-            const apiUrl = `https://api.github.com/repos/${githubRepo}/contents/${photosPath}`;
-            const response = await fetch(apiUrl);
-
-            if (!response.ok) throw new Error(`GitHub API error: ${response.status}`);
-
-            const data = await response.json();
-
-            // Filter image files
-            availableImages = data
-                .filter(item => item.type === 'file' && /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(item.name))
-                .map(item => ({ name: item.name, url: item.download_url, path: item.path }));
-
-            if (availableImages.length === 0) throw new Error('No images found in the specified folder');
-
-            // Restore index from localStorage if valid
-            const savedIndex = parseInt(localStorage.getItem('currentImageIndex'));
-            if (!isNaN(savedIndex) && savedIndex >= 0 && savedIndex < availableImages.length) {
-                currentImageIndex = savedIndex;
-            } else {
-                currentImageIndex = 0;
-            }
-
-            // Notify if new images detected
-            if (availableImages.length > previousImageCount) {
-                imageStatusEl.textContent = `New images detected! Loaded ${availableImages.length} images from GitHub`;
-            } else {
-                imageStatusEl.textContent = `Loaded ${availableImages.length} images from GitHub`;
-            }
-
-            // Load current image and update counter
-            loadImage(availableImages[currentImageIndex]);
-            imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
-            previousImageCount = availableImages.length;
-
-        } catch (error) {
-            console.error('Error loading images:', error);
-            availableImages = [];
-            currentImageIndex = -1;
-            localStorage.removeItem('currentImageIndex');
-
-            feedPlaceholder.innerHTML = `
-                <div class="loading-spinner"></div>
-                <div style="margin-top:8px;">⚠️ Image Load Error</div>
-                <div style="font-size:12px;opacity:.85;margin-top:4px;">${error.message}<br/>Check repo: ${githubRepo}/${photosPath}</div>
-            `;
-            feedImg.style.display = 'none';
-            imageStatusEl.textContent = 'Error loading images';
-            filenameDisplayEl.textContent = 'No images';
-            imageCounterEl.textContent = 'Image 0 of 0';
-        }
-    }
-
-    // Load a specific image (with loading state)
-    function loadImage(imageInfo) {
-        feedPlaceholder.style.display = 'flex';
-        feedImg.style.display = 'none';
-        imageStatusEl.textContent = 'Loading image...';
-
-        const img = new Image();
-        const cacheBuster = '?nocache=' + Date.now();
-
-        img.onload = () => {
-            feedImg.src = img.src + cacheBuster; // try to avoid CDN caching
-            feedImg.style.display = 'block';
-            feedPlaceholder.style.display = 'none';
-            filenameDisplayEl.textContent = imageInfo.name;
-            imageCounterEl.textContent = `Image ${currentImageIndex + 1} of ${availableImages.length}`;
-            updateTimestamp(lastUpdatedEl);
-            imageStatusEl.textContent = 'Image loaded';
-            connectionStatusEl.textContent = 'OPERATIONAL';
-            document.querySelector('.status-dot').style.background = '#4CAF50';
-        };
-
-        img.onerror = () => {
-            feedPlaceholder.innerHTML = `
-                <div class="loading-spinner"></div>
-                <div style="margin-top:8px;">⚠️ Image Not Available</div>
-                <div style="font-size:12px;opacity:.85;margin-top:4px;">Failed to load: ${imageInfo.name}</div>
-            `;
-            feedImg.style.display = 'none';
-            filenameDisplayEl.textContent = 'Image not available';
-            imageStatusEl.textContent = 'Image load failed';
-            connectionStatusEl.textContent = 'CONNECTION ISSUE';
-            document.querySelector('.status-dot').style.background = '#F44336';
-            updateTimestamp(lastUpdatedEl);
-        };
-
-        img.src = imageInfo.url + cacheBuster;
-    }
-
-    // Image navigation
-    function nextImage() {
-        if (!availableImages.length || currentImageIndex >= availableImages.length - 1) return;
-        currentImageIndex++;
-        loadImage(availableImages[currentImageIndex]);
-        localStorage.setItem('currentImageIndex', currentImageIndex);
-        updateTimestamp(lastUpdatedEl);
-    }
-    function previousImage() {
-        if (!availableImages.length || currentImageIndex <= 0) return;
-        currentImageIndex--;
-        loadImage(availableImages[currentImageIndex]);
-        localStorage.setItem('currentImageIndex', currentImageIndex);
-        updateTimestamp(lastUpdatedEl);
-    }
-
-    // GPS demo loader (hardcoded list; swap with file/network as needed)
-    async function loadGPSCoordinates() {
-        try {
-            coordsStatusEl.textContent = 'Loading GPS data...';
-
-            const coordinatesText = `37.7749, -122.4194
+  // GPS (demo hardcoded)
+  async function loadGPSCoordinates(){
+    coordsStatusEl.textContent='Loading GPS...';
+    const coords=`37.7749, -122.4194
 48.8566, 2.3522
 -33.9249, 18.4241
-64.1355, -21.8954
-19.4326, -99.1332
-55.7558, 37.6173
-35.6895, 139.6917
--23.5505, -46.6333
-60.1699, 24.9384
 40.4168, -3.7038`;
-
-            const lines = coordinatesText.split('\n').filter(line => line.trim() !== '');
-            gpsCoordinates = lines.map(line => {
-                const [lat, lng] = line.split(',').map(c => parseFloat(c.trim()));
-                return { lat, lng };
-            });
-
-            if (gpsCoordinates.length > 0) {
-                currentCoordIndex = Math.min(currentCoordIndex, gpsCoordinates.length - 1);
-                displayCoordinatesList();
-                updateMapMarker(currentCoordIndex);
-                gpsCountEl.textContent = `${gpsCoordinates.length} coordinates`;
-                gpsFilenameEl.textContent = 'GPSTEST.txt';
-                coordsStatusEl.textContent = 'GPS data loaded';
-            } else {
-                coordsStatusEl.textContent = 'No GPS coordinates';
-                gpsFilenameEl.textContent = 'Empty';
-            }
-
-            updateTimestamp(coordsUpdatedEl);
-        } catch (error) {
-            console.error('GPS load error:', error);
-            coordsStatusEl.textContent = 'GPS data load failed';
-            gpsFilenameEl.textContent = 'Error';
-        }
-    }
-
-    function displayCoordinatesList() {
-        coordinatesListEl.innerHTML = '';
-        gpsCoordinates.forEach((coord, index) => {
-            const el = document.createElement('div');
-            el.textContent = `${coord.lat.toFixed(4)}, ${coord.lng.toFixed(4)}`;
-            el.id = `coord-${index}`;
-            if (index === currentCoordIndex) el.classList.add('active-coordinate');
-            coordinatesListEl.appendChild(el);
-        });
-        const active = document.getElementById(`coord-${currentCoordIndex}`);
-        active?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-
-    function updateMapMarker(index) {
-        if (!gpsCoordinates.length) return;
-        const coord = gpsCoordinates[index];
-        map.setView([coord.lat, coord.lng], 13);
-        marker.setLatLng([coord.lat, coord.lng]);
-        currentCoordEl.textContent = `${coord.lat.toFixed(4)}, ${coord.lng.toFixed(4)}`;
-    }
-
-    function nextCoordinate() {
-        if (!gpsCoordinates.length) return;
-        currentCoordIndex = (currentCoordIndex + 1) % gpsCoordinates.length;
-        updateMapMarker(currentCoordIndex);
-        displayCoordinatesList();
-        updateTimestamp(coordsUpdatedEl);
-    }
-
-    function previousCoordinate() {
-        if (!gpsCoordinates.length) return;
-        currentCoordIndex = (currentCoordIndex - 1 + gpsCoordinates.length) % gpsCoordinates.length;
-        updateMapMarker(currentCoordIndex);
-        displayCoordinatesList();
-        updateTimestamp(coordsUpdatedEl);
-    }
-
-    function toggleAutoCycle() {
-        if (autoCycleEnabled) {
-            clearInterval(autoCycleInterval);
-            autoCycleEnabled = false;
-            autoCycleBtn.textContent = 'Auto-Cycle: OFF';
-        } else {
-            autoCycleInterval = setInterval(nextCoordinate, 3000);
-            autoCycleEnabled = true;
-            autoCycleBtn.textContent = 'Auto-Cycle: ON';
-        }
-    }
-
-    // Manual refresh: reload images and GPS, check timestamps
-    async function refreshAll() {
-        await loadGitHubPhotos();
-        await loadGPSCoordinates();
-        updateTimestamp(lastUpdatedEl);
-        updateTimestamp(coordsUpdatedEl);
-    }
-
-    // Download log
-    function downloadLog() {
-        const now = new Date();
-        const logContent =
-`Drone Surveillance Logs
-=======================
-Generated at: ${now.toLocaleString()}
-
-GPS Coordinates (${gpsCoordinates.length} total):
-${gpsCoordinates.map(c => `Lat: ${c.lat.toFixed(4)}, Lng: ${c.lng.toFixed(4)}`).join('\n')}
-
-Available Images (${availableImages.length} total):
-${availableImages.map(img => `File: ${img.name}, URL: ${img.url}`).join('\n')}
-
-Current State:
-Image Index: ${currentImageIndex}
-GPS Index: ${currentCoordIndex}
-Auto-Cycle: ${autoCycleEnabled ? 'ON' : 'OFF'}
-Connection Status: ${connectionStatusEl.textContent}
-`;
-
-        const blob = new Blob([logContent], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = 'drone_logs.txt';
-        document.body.appendChild(link);
-        link.click();
-        setTimeout(() => {
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-        }, 0);
-    }
-
-    // Nice UX: disable refresh while running
-    async function handleRefreshClick(e) {
-        const btn = e.currentTarget;
-        const originalText = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = 'Refreshing…';
-        try {
-            await refreshAll();
-        } finally {
-            btn.disabled = false;
-            btn.textContent = originalText;
-        }
-    }
-
-    // Wire up buttons & do initial load
-    window.addEventListener('DOMContentLoaded', () => {
-        document.getElementById('refreshBtn')?.addEventListener('click', handleRefreshClick);
-        document.getElementById('downloadBtn')?.addEventListener('click', downloadLog);
+    gpsCoordinates=coords.split("\n").map(l=>{const[lat,lng]=l.split(",").map(x=>parseFloat(x));return{lat,lng};});
+    gpsCountEl.textContent=`${gpsCoordinates.length} coordinates`;
+    gpsFilenameEl.textContent='GPSTEST.txt';
+    updateMapMarker(currentCoordIndex);
+    displayCoordinatesList();
+    coordsStatusEl.textContent='GPS loaded';
+  }
+  function displayCoordinatesList(){
+    coordinatesListEl.innerHTML='';
+    gpsCoordinates.forEach((c,i)=>{
+      const el=document.createElement('div');
+      el.textContent=`${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`;
+      if(i===currentCoordIndex) el.classList.add('active-coordinate');
+      coordinatesListEl.appendChild(el);
     });
+  }
+  function updateMapMarker(i){
+    if(!gpsCoordinates.length) return;
+    const c=gpsCoordinates[i];
+    map.setView([c.lat,c.lng],13);
+    marker.setLatLng([c.lat,c.lng]);
+    currentCoordEl.textContent=`${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`;
+  }
+  function nextCoordinate(){currentCoordIndex=(currentCoordIndex+1)%gpsCoordinates.length;updateMapMarker(currentCoordIndex);displayCoordinatesList();}
+  function previousCoordinate(){currentCoordIndex=(currentCoordIndex-1+gpsCoordinates.length)%gpsCoordinates.length;updateMapMarker(currentCoordIndex);displayCoordinatesList();}
+  function toggleAutoCycle(){
+    if(autoCycleEnabled){clearInterval(autoCycleInterval);autoCycleEnabled=false;autoCycleBtn.textContent='Auto-Cycle: OFF';}
+    else{autoCycleInterval=setInterval(nextCoordinate,3000);autoCycleEnabled=true;autoCycleBtn.textContent='Auto-Cycle: ON';}
+  }
 
-    // Initial data load on page load
-    window.onload = async () => {
-        try {
-            await loadGPSCoordinates();
-            await loadGitHubPhotos();
-            previousImageCount = availableImages.length;
-            updateTimestamp(lastUpdatedEl);
-            updateTimestamp(coordsUpdatedEl);
-        } catch (error) {
-            console.error('Initial load error:', error);
-        }
-    };
+  // Manual refresh
+  async function refreshAll(){await loadGitHubPhotos();await loadGPSCoordinates();}
+  async function handleRefreshClick(e){
+    const btn=e.currentTarget;const txt=btn.textContent;
+    btn.disabled=true;btn.textContent='Refreshing...';
+    try{await refreshAll();}finally{btn.disabled=false;btn.textContent=txt;}
+  }
+
+  // Download log
+  function downloadLog(){
+    const log=`Drone Logs\n\nGPS:\n${gpsCoordinates.map(c=>`${c.lat},${c.lng}`).join("\n")}\n\nImages:\n${availableImages.map(i=>i.name).join("\n")}`;
+    const blob=new Blob([log],{type:'text/plain'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='drone_logs.txt';a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Init
+  window.addEventListener('DOMContentLoaded',()=>{
+    document.getElementById('refreshBtn').addEventListener('click',handleRefreshClick);
+    document.getElementById('downloadBtn').addEventListener('click',downloadLog);
+    loadGPSCoordinates();loadGitHubPhotos();
+  });
 </script>
 </body>
 </html>
