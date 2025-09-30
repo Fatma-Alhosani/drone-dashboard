@@ -110,7 +110,6 @@
     <div class="controls">
       <button class="control-btn" onclick="previousCoordinate()">Previous</button>
       <button class="control-btn" onclick="nextCoordinate()">Next</button>
-      <button class="control-btn" id="autoCycleBtn" onclick="toggleAutoCycle()">Auto-Cycle: OFF</button>
     </div>
   </div>
 </div>
@@ -146,7 +145,6 @@
   const currentTimeEl = document.getElementById('currentTime');
   const gpsCountEl = document.getElementById('gpsCount');
   const gpsFilenameEl = document.getElementById('gpsFilename');
-  const autoCycleBtn = document.getElementById('autoCycleBtn');
 
   const toast = document.getElementById('newImageToast');
   const toastMsg = document.getElementById('toastMsg');
@@ -157,7 +155,7 @@
   const githubRepo = "Fatma-Alhosani/drone-dashboard";
   const photosPath = "photos";
   const gpsPath = "GPS";            // GPS folder
-  // window.GITHUB_TOKEN = "ghp_xxx"; // optional token for higher rate limits
+  // window.GITHUB_TOKEN = "ghp_xxx"; // optional token
 
   // State
   let availableImages = [];
@@ -165,8 +163,6 @@
 
   let gpsCoordinates = [];          // {lat,lng,ts,alt?}
   let currentCoordIndex = 0;
-  let autoCycleInterval = null;
-  let autoCycleEnabled = false;
 
   let lastSeenTimestamp = null;     // newest image ts (ms)
 
@@ -387,10 +383,6 @@
 
   function nextCoordinate(){ if(!gpsCoordinates.length) return; currentCoordIndex=(currentCoordIndex+1)%gpsCoordinates.length; updateMapMarker(currentCoordIndex); displayCoordinatesList(); }
   function previousCoordinate(){ if(!gpsCoordinates.length) return; currentCoordIndex=(currentCoordIndex-1+gpsCoordinates.length)%gpsCoordinates.length; updateMapMarker(currentCoordIndex); displayCoordinatesList(); }
-  function toggleAutoCycle(){
-    if(autoCycleEnabled){ clearInterval(autoCycleInterval); autoCycleEnabled=false; autoCycleBtn.textContent='Auto-Cycle: OFF'; }
-    else{ autoCycleInterval=setInterval(nextCoordinate,3000); autoCycleEnabled=true; autoCycleBtn.textContent='Auto-Cycle: ON'; }
-  }
 
   // ===== Manual refresh =====
   async function refreshAll(){ await loadGitHubPhotos(); await loadGPSFromGitHub(); }
@@ -413,7 +405,6 @@ ${availableImages.map(i=>i.name).join('\n')}
 Current:
 Image Index: ${currentImageIndex}
 GPS Index: ${currentCoordIndex}
-Auto-Cycle: ${autoCycleEnabled?'ON':'OFF'}
 Connection: ${connectionStatusEl.textContent}`;
     const blob=new Blob([log],{type:'text/plain'});
     const url=URL.createObjectURL(blob);
@@ -428,8 +419,8 @@ Connection: ${connectionStatusEl.textContent}`;
     toastDismissBtn.addEventListener('click',()=>toast.classList.remove('show'));
     toastViewBtn.addEventListener('click',()=>toast.classList.remove('show'));
 
-    loadGPSFromGitHub();   // <-- read newest GPS and jump to last row
-    loadGitHubPhotos();    // <-- open newest image
+    loadGPSFromGitHub();   // read newest GPS and jump to last row
+    loadGitHubPhotos();    // open newest image
     setInterval(checkForNewImages, 30000); // notify on new images
   });
 </script>
