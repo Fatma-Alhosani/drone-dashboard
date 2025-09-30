@@ -15,7 +15,7 @@
     .card{background:#1e1e1e;border-radius:10px;padding:20px;width:min(560px,100%);box-shadow:0 0 15px rgba(0,0,0,.4);}
     .card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;border-bottom:1px solid #333;padding-bottom:10px;}
     .card h2{margin:0;font-size:22px;color:#4CAF50;}
-    .filename{font-size:14px;color:#aaa;background:#333;padding:4px 10px;border-radius:4px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .filename{font-size:14px;color:#aaa;background:#333;padding:4px 10px;border-radius:4px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
     .feed-container{position:relative;width:100%;height:320px;border-radius:10px;overflow:hidden;background:#151515;}
     .feed img{width:100%;height:100%;object-fit:contain;border-radius:10px;display:block;transition:opacity .25s ease;}
@@ -51,6 +51,8 @@
     .toast .actions{ margin-left:8px; display:flex; gap:8px; }
     .toast button{ background:#333; color:#fff; border:1px solid #555; border-radius:6px; padding:6px 10px; cursor:pointer; }
     .toast button:hover{ background:#3a3a3a; }
+
+    .subtle{font-weight:normal; font-size:12px; opacity:.9}
   </style>
 </head>
 <body>
@@ -88,15 +90,16 @@
       <h2>Detection Alerts</h2>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
         <div class="filename" id="gpsCount">0 coordinates</div>
-        <div class="gps-filename" id="gpsFilename" style="font-size:12px;color:#888;font-style:italic;">--</div>
+        <div class="gps-filename filename" id="gpsFilename">--</div>
       </div>
     </div>
 
     <div class="alert-box">
-      <div style="display:flex;justify-content:space-between;">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
         <span>Current GPS Location:</span>
         <span id="currentCoord">--, --</span>
       </div>
+      <div class="subtle" id="currentTime">timestamp: --</div>
     </div>
 
     <div id="map"></div>
@@ -137,8 +140,10 @@
   const imageCounterEl = document.getElementById('imageCounter');
   const connectionStatusEl = document.getElementById('connectionStatus');
   const statusDot = document.querySelector('.status-dot');
+
   const coordinatesListEl = document.getElementById('coordinatesList');
   const currentCoordEl = document.getElementById('currentCoord');
+  const currentTimeEl = document.getElementById('currentTime');
   const gpsCountEl = document.getElementById('gpsCount');
   const gpsFilenameEl = document.getElementById('gpsFilename');
   const autoCycleBtn = document.getElementById('autoCycleBtn');
@@ -151,16 +156,19 @@
   // Config
   const githubRepo = "Fatma-Alhosani/drone-dashboard";
   const photosPath = "photos";
-  // window.GITHUB_TOKEN = "ghp_xxx"; // optional
+  const gpsPath = "GPS";            // GPS folder
+  // window.GITHUB_TOKEN = "ghp_xxx"; // optional token for higher rate limits
 
   // State
   let availableImages = [];
   let currentImageIndex = 0;
-  let gpsCoordinates = [];
+
+  let gpsCoordinates = [];          // {lat,lng,ts,alt?}
   let currentCoordIndex = 0;
   let autoCycleInterval = null;
   let autoCycleEnabled = false;
-  let lastSeenTimestamp = null; // ms since epoch
+
+  let lastSeenTimestamp = null;     // newest image ts (ms)
 
   // Map
   const map = L.map('map').setView([37.7749,-122.4194],13);
@@ -171,8 +179,8 @@
   function tsFromName(name){
     const m = name.match(/^(\d{4})-(\d{2})-(\d{2})\|(\d{2})-(\d{2})-(\d{2})/);
     if (!m) return null;
-    const [ , Y, M, D, h, mnt, s ] = m.map(Number);
-    return Date.UTC(Y, M-1, D, h, mnt, s);
+    const [ , Y,M,D,h,min,s ] = m.map(Number);
+    return Date.UTC(Y, M-1, D, h, min, s);
   }
   async function ghFetch(url){
     const headers = { 'Accept': 'application/vnd.github+json' };
@@ -180,6 +188,7 @@
     return fetch(url, { headers });
   }
 
+  // ===== IMAGES =====
   async function loadGitHubPhotos(){
     feedPlaceholder.style.display='flex';
     feedPlaceholder.textContent='Loading images from GitHub…';
@@ -196,7 +205,7 @@
       if(!availableImages.length) throw new Error('No images found');
 
       availableImages.sort((a,b)=>{
-        if(a.ts!=null && b.ts!=null) return a.ts - b.ts;  // oldest → newest
+        if(a.ts!=null && b.ts!=null) return a.ts - b.ts;
         if(a.ts!=null) return 1;
         if(b.ts!=null) return -1;
         return a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:'base'});
@@ -223,12 +232,10 @@
       const apiUrl = `https://api.github.com/repos/${githubRepo}/contents/${photosPath}`;
       const res = await ghFetch(apiUrl);
       if(!res.ok) return;
-
       const data = await res.json();
       const imgs = data
         .filter(i=>i.type==='file' && /\.(jpe?g|png|gif|bmp|webp)$/i.test(i.name))
         .map(i=>({ name:i.name, url:i.download_url, ts:tsFromName(i.name) }));
-
       if(!imgs.length) return;
 
       imgs.sort((a,b)=>{
@@ -249,7 +256,7 @@
           imageCounterEl.textContent = `Image ${currentImageIndex+1} of ${availableImages.length}`;
         });
       }
-    }catch(_e){ /* ignore transient errors */ }
+    }catch(_e){}
   }
 
   function showToast(message, onView){
@@ -285,48 +292,99 @@
     };
     img.src=info.url+cache;
   }
-
   function nextImage(){ if(currentImageIndex<availableImages.length-1){ currentImageIndex++; loadImage(availableImages[currentImageIndex]); } }
   function previousImage(){ if(currentImageIndex>0){ currentImageIndex--; loadImage(availableImages[currentImageIndex]); } }
 
-  // GPS (demo)
-  async function loadGPSCoordinates(){
-    const text=`37.7749, -122.4194
-48.8566, 2.3522
--33.9249, 18.4241
-64.1355, -21.8954
-19.4326, -99.1332
-55.7558, 37.6173
-35.6895, 139.6917
--23.5505, -46.6333
-60.1699, 24.9384
-40.4168, -3.7038`;
-    gpsCoordinates = text.split('\n').filter(Boolean).map(line=>{
-      const [lat,lng]=line.split(',').map(x=>parseFloat(x));
-      return {lat,lng};
-    });
-    gpsCountEl.textContent=`${gpsCoordinates.length} coordinates`;
-    gpsFilenameEl.textContent='GPSTEST.txt';
-    currentCoordIndex=0;
-    displayCoordinatesList();
-    updateMapMarker(currentCoordIndex);
+  // ===== GPS from GitHub (CSV) =====
+  async function loadGPSFromGitHub(){
+    try{
+      // list GPS folder
+      const listUrl = `https://api.github.com/repos/${githubRepo}/contents/${gpsPath}`;
+      const listRes = await ghFetch(listUrl);
+      if(!listRes.ok) throw new Error(`GitHub error ${listRes.status}`);
+      const items = await listRes.json();
+
+      const csvs = items.filter(i => i.type==='file' && /\.csv$/i.test(i.name))
+                        .map(i => ({ name:i.name, url:i.download_url, ts: tsFromName(i.name) }));
+
+      if (!csvs.length) throw new Error('No CSV found in GPS/');
+
+      // newest by timestamped filename if present; else lexical
+      csvs.sort((a,b)=>{
+        if(a.ts!=null && b.ts!=null) return a.ts - b.ts;
+        if(a.ts!=null) return 1;
+        if(b.ts!=null) return -1;
+        return a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:'base'});
+      });
+
+      const chosen = csvs[csvs.length - 1];
+
+      // download CSV
+      const csvRes = await fetch(chosen.url + '?nocache=' + Date.now());
+      if(!csvRes.ok) throw new Error(`CSV download failed ${csvRes.status}`);
+      const csvText = await csvRes.text();
+
+      // parse CSV
+      const lines = csvText.split(/\r?\n/).filter(l => l.trim().length>0);
+      if (lines.length < 2) throw new Error('CSV has no data rows');
+
+      const header = lines[0].split(',').map(h=>h.trim().toLowerCase());
+      const idxTime = header.findIndex(h => /time/.test(h)); // timestamp/timestamp_iso
+      const idxLat  = header.findIndex(h => /^lat$/.test(h) || /latitude/.test(h));
+      const idxLon  = header.findIndex(h => /^lon$/.test(h) || /^lng$/.test(h) || /longitude/.test(h));
+      const idxAlt  = header.findIndex(h => /alt/.test(h)); // optional
+
+      if (idxLat === -1 || idxLon === -1) throw new Error('CSV missing lat/lon columns');
+
+      gpsCoordinates = lines.slice(1).map(row=>{
+        const cols = row.split(',').map(c=>c.trim());
+        const ts  = idxTime >= 0 ? cols[idxTime] : null;
+        const lat = parseFloat(cols[idxLat]);
+        const lng = parseFloat(cols[idxLon]);
+        const alt = idxAlt >= 0 ? parseFloat(cols[idxAlt]) : null;
+        return { ts, lat, lng, alt };
+      }).filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+
+      if (!gpsCoordinates.length) throw new Error('No valid coordinates in CSV');
+
+      // UI + jump to most recent row
+      gpsCountEl.textContent = `${gpsCoordinates.length} coordinates`;
+      gpsFilenameEl.textContent = chosen.name;
+
+      currentCoordIndex = gpsCoordinates.length - 1; // newest row
+      displayCoordinatesList();
+      updateMapMarker(currentCoordIndex);
+
+    }catch(err){
+      gpsFilenameEl.textContent = 'GPS error';
+      currentCoordEl.textContent = '--, --';
+      currentTimeEl.textContent = 'timestamp: --';
+      console.error('GPS load error:', err);
+    }
   }
+
   function displayCoordinatesList(){
     coordinatesListEl.innerHTML='';
     gpsCoordinates.forEach((c,i)=>{
       const el=document.createElement('div');
-      el.textContent=`${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`;
+      const ts = c.ts ? ` [${c.ts}]` : '';
+      el.textContent=`${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}${ts}`;
       if(i===currentCoordIndex) el.classList.add('active-coordinate');
       coordinatesListEl.appendChild(el);
     });
+    const active = coordinatesListEl.children[currentCoordIndex];
+    if (active) active.scrollIntoView({behavior:'smooth', block:'nearest'});
   }
+
   function updateMapMarker(i){
     if(!gpsCoordinates.length) return;
     const c=gpsCoordinates[i];
-    map.setView([c.lat,c.lng],13);
+    map.setView([c.lat,c.lng],15);
     marker.setLatLng([c.lat,c.lng]);
     currentCoordEl.textContent=`${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`;
+    currentTimeEl.textContent = `timestamp: ${c.ts ?? '--'}`;
   }
+
   function nextCoordinate(){ if(!gpsCoordinates.length) return; currentCoordIndex=(currentCoordIndex+1)%gpsCoordinates.length; updateMapMarker(currentCoordIndex); displayCoordinatesList(); }
   function previousCoordinate(){ if(!gpsCoordinates.length) return; currentCoordIndex=(currentCoordIndex-1+gpsCoordinates.length)%gpsCoordinates.length; updateMapMarker(currentCoordIndex); displayCoordinatesList(); }
   function toggleAutoCycle(){
@@ -334,20 +392,20 @@
     else{ autoCycleInterval=setInterval(nextCoordinate,3000); autoCycleEnabled=true; autoCycleBtn.textContent='Auto-Cycle: ON'; }
   }
 
-  // Manual refresh
-  async function refreshAll(){ await loadGitHubPhotos(); await loadGPSCoordinates(); }
+  // ===== Manual refresh =====
+  async function refreshAll(){ await loadGitHubPhotos(); await loadGPSFromGitHub(); }
   async function handleRefreshClick(e){
     const btn=e.currentTarget,txt=btn.textContent;
     btn.disabled=true; btn.textContent='Refreshing…';
     try{ await refreshAll(); } finally { btn.disabled=false; btn.textContent=txt; }
   }
 
-  // Download log
+  // ===== Download log =====
   function downloadLog(){
     const log=`Drone Surveillance Logs
 
 GPS (${gpsCoordinates.length}):
-${gpsCoordinates.map(c=>`Lat: ${c.lat.toFixed(4)}, Lng: ${c.lng.toFixed(4)}`).join('\n')}
+${gpsCoordinates.map(c=>`Lat: ${c.lat.toFixed(4)}, Lng: ${c.lng.toFixed(4)}, TS: ${c.ts ?? '--'}`).join('\n')}
 
 Images (${availableImages.length}):
 ${availableImages.map(i=>i.name).join('\n')}
@@ -363,15 +421,15 @@ Connection: ${connectionStatusEl.textContent}`;
     URL.revokeObjectURL(url);
   }
 
-  // Init
+  // ===== Init =====
   window.addEventListener('DOMContentLoaded',()=>{
     document.getElementById('refreshBtn').addEventListener('click',handleRefreshClick);
     document.getElementById('downloadBtn').addEventListener('click',downloadLog);
     toastDismissBtn.addEventListener('click',()=>toast.classList.remove('show'));
     toastViewBtn.addEventListener('click',()=>toast.classList.remove('show'));
 
-    loadGPSCoordinates();
-    loadGitHubPhotos();             // open newest image
+    loadGPSFromGitHub();   // <-- read newest GPS and jump to last row
+    loadGitHubPhotos();    // <-- open newest image
     setInterval(checkForNewImages, 30000); // notify on new images
   });
 </script>
