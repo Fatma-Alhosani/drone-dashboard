@@ -7,57 +7,51 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
   <style>
     :root{
-      --bg:#111; --card:#1e1e1e; --sub:#151515; --accent:#4CAF50; --muted:#aaa; --border:#333; --error:#c62828;
+      --bg:#111; --card:#1e1e1e; --sub:#151515; --accent:#4CAF50; --muted:#aaa; --border:#333;
     }
-    body{margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:var(--bg);color:#fff;overflow-x:hidden;}
-    header{background:#000;padding:15px 30px;font-size:20px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 10px rgba(0,0,0,.5);}
-    .header-status{font-size:14px;color:var(--accent);display:flex;align-items:center;}
-    .status-dot{width:10px;height:10px;background:var(--accent);border-radius:50%;margin-right:8px;}
-
+    body.light { --bg:#f5f5f5; --card:#fff; --sub:#f0f0f0; --accent:#0066cc; --muted:#555; --border:#ccc; color:#000; }
+    body{margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:var(--bg);color:#fff;overflow-x:hidden;transition:background .3s,color .3s;}
+    header{background:#000;padding:15px 30px;font-size:20px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;}
+    body.light header{background:#eee;color:#000;}
+    .header-status{font-size:14px;color:var(--accent);display:flex;align-items:center;gap:15px;}
+    .status-dot{width:10px;height:10px;background:var(--accent);border-radius:50%;}
+    .theme-toggle{cursor:pointer;padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:var(--sub);color:inherit;font-size:14px;}
     .wrap{padding:28px;display:flex;justify-content:center;}
-    .violations{
-      width:min(1200px,100%);
-      background:var(--card);
-      border-radius:14px;
-      padding:18px 18px 10px;
-      box-shadow:0 0 18px rgba(0,0,0,.35);
-    }
-    .violations h2{
-      margin:0 0 14px 0; font-size:22px; color:var(--accent);
-      padding-bottom:10px; border-bottom:1px solid var(--border);
-    }
+    .violations{width:min(1200px,100%);background:var(--card);border-radius:14px;padding:18px;box-shadow:0 0 18px rgba(0,0,0,.35);}
+    .violations h2{margin:0 0 14px 0;font-size:22px;color:var(--accent);padding-bottom:10px;border-bottom:1px solid var(--border);}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-    @media (max-width: 980px){ .grid{ grid-template-columns: 1fr; } }
+    @media (max-width:980px){.grid{grid-template-columns:1fr;}}
     .pane{background:var(--sub);border:1px solid var(--border);border-radius:10px;padding:14px;min-height:360px;}
-    .pane h3{margin:0 0 10px 0; font-size:14px; text-transform:uppercase; letter-spacing:.6px; color:#ddd;
-      display:flex; justify-content:space-between; align-items:center;}
-    .tiny{ font-size:12px; color:var(--muted); background:#2b2b2b; padding:4px 8px; border-radius:6px; }
+    .pane h3{margin:0 0 10px 0;font-size:14px;text-transform:uppercase;color:#ddd;display:flex;justify-content:space-between;}
+    body.light .pane h3{color:#222;}
+    .tiny{font-size:12px;color:var(--muted);background:#2b2b2b;padding:4px 8px;border-radius:6px;}
+    body.light .tiny{background:#ddd;}
     .feed-container{position:relative;width:100%;height:360px;border-radius:10px;overflow:hidden;background:#101010;}
-    .feed-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#2a2a2a;color:#bbb;}
+    body.light .feed-container{background:#e0e0e0;}
+    .feed-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#bbb;}
     #feedImg{width:100%;height:100%;object-fit:contain;border-radius:10px;display:none;}
     #map{height:260px;border-radius:10px;margin-top:6px;z-index:1;}
     .coordinates-list{max-height:152px;overflow-y:auto;background:#1c1c1c;padding:8px;border-radius:8px;margin-top:10px;font-family:monospace;border:1px solid var(--border);}
+    body.light .coordinates-list{background:#fafafa;}
     .coordinates-list div{padding:5px;border-bottom:1px solid #2f2f2f;}
     .coordinates-list div:last-child{border-bottom:none;}
     .active-coordinate{background:#272727;font-weight:bold;}
-    .controls{display:flex; align-items:center; justify-content:center; gap:10px;margin:16px 6px 6px;}
+    body.light .active-coordinate{background:#ddd;}
+    .controls{display:flex;align-items:center;justify-content:center;gap:10px;margin:16px 6px;}
     .control-btn{background:#333;color:#fff;border:1px solid #444;padding:10px 18px;border-radius:8px;cursor:pointer;}
+    body.light .control-btn{background:#eee;color:#000;border:1px solid #bbb;}
     .control-btn:hover{background:#3d3d3d;}
     .counter{font-size:13px;color:var(--muted);padding:6px 10px;background:#232323;border:1px solid #3a3a3a;border-radius:8px;}
-    .toast{position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px);
-      background:#222; color:#fff; border:1px solid #444; border-radius:10px;
-      padding:12px 16px; box-shadow:0 6px 20px rgba(0,0,0,.45); display:flex; align-items:center; gap:10px;
-      opacity:0; pointer-events:none; transition:opacity .25s ease, transform .25s ease; z-index:1000;}
-    .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; }
-    .toast .dot{ width:10px; height:10px; border-radius:50%; background:var(--accent); }
-    .toast .actions{ margin-left:8px; display:flex; gap:8px; }
-    .toast button{ background:#333; color:#fff; border:1px solid #555; border-radius:6px; padding:6px 10px; cursor:pointer; }
+    body.light .counter{background:#f0f0f0;color:#555;border:1px solid #bbb;}
   </style>
 </head>
 <body>
 <header>
   <div>DRONE SURVEILLANCE DASHBOARD</div>
-  <div class="header-status"><div class="status-dot"></div><span id="connectionStatus">OPERATIONAL</span></div>
+  <div class="header-status">
+    <div class="status-dot"></div><span id="connectionStatus">OPERATIONAL</span>
+    <button class="theme-toggle" id="themeToggle">🌙 Dark</button>
+  </div>
 </header>
 
 <div class="wrap">
@@ -69,7 +63,7 @@
         <div class="feed-container"><div id="feedPlaceholder" class="feed-placeholder">Loading…</div><img id="feedImg"></div>
       </div>
       <div class="pane">
-        <h3>GPS Coordinates <span class="tiny" id="gpsFilename">gps_log.csv</span></h3>
+        <h3>GPS Coordinates <span class="tiny">gps_log.csv</span></h3>
         <div style="background:#8b1f1f;padding:10px;border-radius:8px;margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;font-weight:bold;">
             <span>Current GPS Location</span><span id="currentCoord">--, --</span>
@@ -83,48 +77,34 @@
     </div>
     <div class="controls">
       <button class="control-btn" id="prevBtn">Previous</button>
+      <button class="control-btn" id="refreshBtn">Refresh</button>
       <span class="counter" id="pairCounter">Pair 0 of 0</span>
       <button class="control-btn" id="nextBtn">Next</button>
     </div>
   </section>
 </div>
 
-<div id="newImageToast" class="toast"><span class="dot"></span><span id="toastMsg">New image received</span>
-  <div class="actions"><button id="toastViewBtn">View</button><button id="toastDismissBtn">Dismiss</button></div>
-</div>
-
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script>
-const githubRepo = "Fatma-Alhosani/drone-dashboard";
-const photosPath = "photos";
-const gpsFile = "GPS/gps_log.csv";
-
-let pairs = [], currentPairIndex = 0;
-let gpsData = [];
+const githubRepo="Fatma-Alhosani/drone-dashboard";
+const photosPath="photos";
+const gpsFile="GPS/gps_log.csv";
+let pairs=[],gpsData=[],currentPairIndex=0;
 
 const feedImg=document.getElementById("feedImg");
 const feedPlaceholder=document.getElementById("feedPlaceholder");
 const filenameDisplayEl=document.getElementById("filenameDisplay");
 const pairCounterEl=document.getElementById("pairCounter");
-const connectionStatusEl=document.getElementById("connectionStatus");
-const statusDot=document.querySelector(".status-dot");
-const coordinatesListEl=document.getElementById("coordinatesList");
 const currentCoordEl=document.getElementById("currentCoord");
 const currentTimeEl=document.getElementById("currentTime");
 
-const map = L.map('map').setView([0,0],2);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution:'&copy; OpenStreetMap contributors' }).addTo(map);
-const marker = L.marker([0,0]).addTo(map);
+const map=L.map("map").setView([0,0],2);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"&copy; OpenStreetMap"}).addTo(map);
+const marker=L.marker([0,0]).addTo(map);
 
-async function ghListFolder(path){
-  const url=`https://api.github.com/repos/${githubRepo}/contents/${path}`;
-  const res=await fetch(url); if(!res.ok) throw new Error("GitHub error"); return res.json();
-}
-async function ghGetFile(path){
-  const url=`https://raw.githubusercontent.com/${githubRepo}/main/${path}`;
-  const res=await fetch(url); if(!res.ok) throw new Error("File error"); return res.text();
-}
-function baseName(name){const i=name.lastIndexOf('.'); return i>0?name.slice(0,i):name;}
+async function ghListFolder(path){const url=`https://api.github.com/repos/${githubRepo}/contents/${path}`;const r=await fetch(url);return r.json();}
+async function ghGetFile(path){const url=`https://raw.githubusercontent.com/${githubRepo}/main/${path}`;const r=await fetch(url);return r.text();}
+function baseName(name){const i=name.lastIndexOf('.');return i>0?name.slice(0,i):name;}
 
 async function loadGPS(){
   const text=await ghGetFile(gpsFile);
@@ -134,52 +114,47 @@ async function loadGPS(){
   const idxLat=header.findIndex(h=>h.includes("lat"));
   const idxLon=header.findIndex(h=>h.includes("lon"));
   gpsData=lines.slice(1).map(r=>{
-    const cols=r.split(",");
-    return {key:cols[idxTime], lat:parseFloat(cols[idxLat]), lon:parseFloat(cols[idxLon])};
+    const c=r.split(",");
+    return {key:c[idxTime],lat:parseFloat(c[idxLat]),lon:parseFloat(c[idxLon])};
   });
 }
 async function loadAllPairs(){
   await loadGPS();
   const photos=await ghListFolder(photosPath);
   pairs=photos.filter(i=>i.type==="file"&&/\.(jpg|png)$/i.test(i.name))
-    .map(i=>{
-      const key=baseName(i.name);
-      const gps=gpsData.find(g=>g.key===key);
-      return gps?{photo:{name:i.name,url:i.download_url},gps}:null;
-    }).filter(Boolean);
-  pairs.sort((a,b)=>a.photo.name.localeCompare(b.photo.name));
-  currentPairIndex=pairs.length-1;
-  await showPair(currentPairIndex);
-  updateCounter();
+    .map(i=>{const key=baseName(i.name);const gps=gpsData.find(g=>g.key===key);return gps?{photo:{name:i.name,url:i.download_url},gps}:null;})
+    .filter(Boolean).sort((a,b)=>a.photo.name.localeCompare(b.photo.name));
+  currentPairIndex=pairs.length-1;showPair(currentPairIndex);updateCounter();
 }
 function updateCounter(){pairCounterEl.textContent=`Pair ${pairs.length?currentPairIndex+1:0} of ${pairs.length}`;}
-async function showPair(i){
-  if(i<0||i>=pairs.length)return;
-  const pair=pairs[i]; await loadImage(pair.photo); showGPS(pair.gps);
-}
-async function loadImage(info){
-  feedPlaceholder.style.display="flex"; feedImg.style.display="none";
-  return new Promise(res=>{
-    const img=new Image(); img.onload=()=>{feedImg.src=info.url+"?"+Date.now();feedImg.style.display="block";feedPlaceholder.style.display="none";filenameDisplayEl.textContent=info.name;res();};
-    img.onerror=()=>{feedPlaceholder.textContent="Error loading";res();};
-    img.src=info.url+"?"+Date.now();
-  });
+function showPair(i){if(i<0||i>=pairs.length)return;loadImage(pairs[i].photo);showGPS(pairs[i].gps);}
+function loadImage(info){
+  feedPlaceholder.style.display="flex";feedImg.style.display="none";
+  const img=new Image();img.onload=()=>{feedImg.src=info.url+"?"+Date.now();feedImg.style.display="block";feedPlaceholder.style.display="none";filenameDisplayEl.textContent=info.name;};
+  img.onerror=()=>feedPlaceholder.textContent="Error";img.src=info.url+"?"+Date.now();
 }
 function showGPS(g){
   currentCoordEl.textContent=`${g.lat.toFixed(5)}, ${g.lon.toFixed(5)}`;
   currentTimeEl.textContent=`timestamp: ${g.key}`;
-  map.setView([g.lat,g.lon],15); marker.setLatLng([g.lat,g.lon]);
-  coordinatesListEl.innerHTML="";
-  gpsData.forEach(r=>{
-    const el=document.createElement("div");
-    el.textContent=`${r.lat.toFixed(5)}, ${r.lon.toFixed(5)} [${r.key}]`;
-    if(r.key===g.key) el.classList.add("active-coordinate");
-    coordinatesListEl.appendChild(el);
-  });
+  map.setView([g.lat,g.lon],15);marker.setLatLng([g.lat,g.lon]);
+  coordinatesListEl.innerHTML="";gpsData.forEach(r=>{const el=document.createElement("div");el.textContent=`${r.lat.toFixed(5)}, ${r.lon.toFixed(5)} [${r.key}]`;if(r.key===g.key)el.classList.add("active-coordinate");coordinatesListEl.appendChild(el);});
 }
-
 document.getElementById("nextBtn").onclick=()=>{if(currentPairIndex<pairs.length-1){currentPairIndex++;showPair(currentPairIndex);updateCounter();}};
 document.getElementById("prevBtn").onclick=()=>{if(currentPairIndex>0){currentPairIndex--;showPair(currentPairIndex);updateCounter();}};
+document.getElementById("refreshBtn").onclick=()=>loadAllPairs();
+
+// Keyboard navigation
+window.addEventListener("keydown",e=>{
+  if(e.key==="ArrowRight")document.getElementById("nextBtn").click();
+  if(e.key==="ArrowLeft")document.getElementById("prevBtn").click();
+  if(e.key.toLowerCase()==="r")document.getElementById("refreshBtn").click();
+});
+
+// Theme toggle
+const themeToggle=document.getElementById("themeToggle");
+function setTheme(light){document.body.classList.toggle("light",light);themeToggle.textContent=light?"☀️ Light":"🌙 Dark";localStorage.setItem("theme",light?"light":"dark");}
+themeToggle.onclick=()=>setTheme(!document.body.classList.contains("light"));
+if(localStorage.getItem("theme")==="light")setTheme(true);
 
 window.addEventListener("DOMContentLoaded",loadAllPairs);
 </script>
