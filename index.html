@@ -10,7 +10,7 @@
       --bg:#111; --card:#1e1e1e; --sub:#151515; --accent:#4CAF50; --muted:#aaa; --border:#333;
     }
     body.light { --bg:#f5f5f5; --card:#fff; --sub:#f0f0f0; --accent:#0066cc; --muted:#555; --border:#ccc; color:#000; }
-    body{margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:var(--bg);color:#fff;overflow-x:hidden;transition:background .3s,color .3s;}
+    body{margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:var(--bg);color:#fff;transition:background .3s,color .3s;}
     header{background:#000;padding:15px 30px;font-size:20px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;}
     body.light header{background:#eee;color:#000;}
     .header-status{font-size:14px;color:var(--accent);display:flex;align-items:center;gap:15px;}
@@ -30,7 +30,7 @@
     body.light .feed-container{background:#e0e0e0;}
     .feed-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#bbb;}
     #feedImg{width:100%;height:100%;object-fit:contain;border-radius:10px;display:none;}
-    #map{height:260px;border-radius:10px;margin-top:6px;z-index:1;}
+    #map{height:260px;border-radius:10px;margin-top:6px;}
     .coordinates-list{max-height:152px;overflow-y:auto;background:#1c1c1c;padding:8px;border-radius:8px;margin-top:10px;font-family:monospace;border:1px solid var(--border);}
     body.light .coordinates-list{background:#fafafa;}
     .coordinates-list div{padding:5px;border-bottom:1px solid #2f2f2f;}
@@ -40,7 +40,6 @@
     .controls{display:flex;align-items:center;justify-content:center;gap:10px;margin:16px 6px;}
     .control-btn{background:#333;color:#fff;border:1px solid #444;padding:10px 18px;border-radius:8px;cursor:pointer;}
     body.light .control-btn{background:#eee;color:#000;border:1px solid #bbb;}
-    .control-btn:hover{background:#3d3d3d;}
     .counter{font-size:13px;color:var(--muted);padding:6px 10px;background:#232323;border:1px solid #3a3a3a;border-radius:8px;}
     body.light .counter{background:#f0f0f0;color:#555;border:1px solid #bbb;}
   </style>
@@ -102,8 +101,8 @@ const map=L.map("map").setView([0,0],2);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"&copy; OpenStreetMap"}).addTo(map);
 const marker=L.marker([0,0]).addTo(map);
 
-async function ghListFolder(path){const url=`https://api.github.com/repos/${githubRepo}/contents/${path}`;const r=await fetch(url);return r.json();}
-async function ghGetFile(path){const url=`https://raw.githubusercontent.com/${githubRepo}/main/${path}`;const r=await fetch(url);return r.text();}
+async function ghListFolder(path){const r=await fetch(`https://api.github.com/repos/${githubRepo}/contents/${path}`);return r.json();}
+async function ghGetFile(path){const r=await fetch(`https://raw.githubusercontent.com/${githubRepo}/main/${path}`);return r.text();}
 function baseName(name){const i=name.lastIndexOf('.');return i>0?name.slice(0,i):name;}
 
 async function loadGPS(){
@@ -118,24 +117,20 @@ async function loadGPS(){
     return {key:c[idxTime],lat:parseFloat(c[idxLat]),lon:parseFloat(c[idxLon])};
   });
 }
-
 async function loadAllPairs(){
   await loadGPS();
   const photos=await ghListFolder(photosPath);
-  pairs=[];
-  photos.filter(i=>i.type==="file"&&/\.(jpg|png)$/i.test(i.name)).forEach(i=>{
-    const key=baseName(i.name);
-    const gpsMatches=gpsData.filter(g=>g.key===key);
-    gpsMatches.forEach(g=>{
-      pairs.push({photo:{name:i.name,url:i.download_url},gps:g});
-    });
-  });
+  pairs=photos.filter(i=>i.type==="file"&&/\.(jpg|png)$/i.test(i.name))
+    .map(i=>{
+      const key=baseName(i.name);
+      const gps=gpsData.find(g=>g.key===key);
+      return gps?{photo:{name:i.name,url:i.download_url},gps}:null;
+    }).filter(Boolean);
   pairs.sort((a,b)=>a.photo.name.localeCompare(b.photo.name));
   currentPairIndex=pairs.length-1;
   showPair(currentPairIndex);
   updateCounter();
 }
-
 function updateCounter(){pairCounterEl.textContent=`Pair ${pairs.length?currentPairIndex+1:0} of ${pairs.length}`;}
 function showPair(i){if(i<0||i>=pairs.length)return;loadImage(pairs[i].photo);showGPS(pairs[i].gps);}
 function loadImage(info){
