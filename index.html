@@ -97,38 +97,29 @@
 
 <div class="wrap">
   <section class="violations">
-    <h2>Probable Violations</h2>
+    <h2>Possible Violations</h2>
 
     <div class="grid">
       <!-- LEFT: Images -->
       <div class="pane">
-        <h3>
-          Captured Frames
-          <span class="tiny" id="filenameDisplay">Loading…</span>
-        </h3>
+        <h3>Images <span class="tiny" id="filenameDisplay">Loading…</span></h3>
         <div class="feed-container">
-          <div id="feedPlaceholder" class="feed-placeholder">Loading images from GitHub…</div>
+          <div id="feedPlaceholder" class="feed-placeholder">Loading images…</div>
           <img id="feedImg" alt="Drone Frame">
         </div>
       </div>
 
       <!-- RIGHT: GPS -->
       <div class="pane">
-        <h3>
-          GPS / Map
-          <span class="tiny" id="gpsFilename">--</span>
-        </h3>
-
-        <div style="background:#8b1f1f;padding:10px 12px;border-radius:8px;margin-bottom:8px;border:1px solid #a22;">
+        <h3>GPS Coordinates <span class="tiny" id="gpsFilename">--</span></h3>
+        <div style="background:#8b1f1f;padding:10px 12px;border-radius:8px;margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;font-weight:bold;">
             <span>Current GPS Location</span>
             <span id="currentCoord">--, --</span>
           </div>
           <div style="opacity:.9;font-size:12px" id="currentTime">timestamp: --</div>
         </div>
-
         <div id="map"></div>
-
         <h4 style="margin:12px 4px 6px">GPS Coordinates from File</h4>
         <div class="coordinates-list" id="coordinatesList"></div>
       </div>
@@ -155,277 +146,143 @@
 
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script>
-  // ---------- DOM refs ----------
   const feedImg = document.getElementById('feedImg');
   const feedPlaceholder = document.getElementById('feedPlaceholder');
   const filenameDisplayEl = document.getElementById('filenameDisplay');
   const pairCounterEl = document.getElementById('pairCounter');
   const connectionStatusEl = document.getElementById('connectionStatus');
   const statusDot = document.querySelector('.status-dot');
-
   const coordinatesListEl = document.getElementById('coordinatesList');
   const currentCoordEl = document.getElementById('currentCoord');
   const currentTimeEl = document.getElementById('currentTime');
   const gpsFilenameEl = document.getElementById('gpsFilename');
-
   const toast = document.getElementById('newImageToast');
   const toastMsg = document.getElementById('toastMsg');
   const toastViewBtn = document.getElementById('toastViewBtn');
   const toastDismissBtn = document.getElementById('toastDismissBtn');
-
   const prevBtn = document.getElementById('prevBtn');
   const nextBtn = document.getElementById('nextBtn');
 
-  // ---------- Config ----------
   const githubRepo = "Fatma-Alhosani/drone-dashboard";
   const photosPath = "photos";
   const gpsPath = "GPS";
-  // window.GITHUB_TOKEN = "ghp_xxx"; // optional
 
-  // ---------- State ----------
-  // Each pair: { key, ts, photo:{name,url}, gps:{name,url} }
   let pairs = [];
   let currentPairIndex = 0;
-
-  let gpsCoordinates = [];   // parsed from current CSV
+  let gpsCoordinates = [];
   let currentCoordIndex = 0;
+  let lastSeenTimestamp = null;
 
-  let lastSeenTimestamp = null; // newest pair's ts (ms)
-
-  // ---------- Map ----------
   const map = L.map('map').setView([37.7749,-122.4194],13);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution:'&copy; OpenStreetMap contributors' }).addTo(map);
   const marker = L.marker([37.7749,-122.4194]).addTo(map);
 
-  // ---------- Helpers ----------
-  function ghHeaders(){
-    const h = { 'Accept': 'application/vnd.github+json' };
-    if (window.GITHUB_TOKEN) h['Authorization'] = 'Bearer ' + window.GITHUB_TOKEN;
-    return h;
-  }
+  function ghHeaders(){ return { 'Accept': 'application/vnd.github+json' }; }
   async function ghListFolder(path){
     const url = `https://api.github.com/repos/${githubRepo}/contents/${path}`;
     const res = await fetch(url, { headers: ghHeaders() });
-    if(!res.ok) throw new Error(`GitHub error ${res.status} for ${path}`);
+    if(!res.ok) throw new Error(`GitHub error ${res.status}`);
     return res.json();
   }
-  function baseName(name){
-    const i = name.lastIndexOf('.');
-    return i > 0 ? name.slice(0,i) : name;
-  }
+  function baseName(name){ const i=name.lastIndexOf('.'); return i>0?name.slice(0,i):name; }
   function tsFromName(name){
-    // Accept YYYY-MM-DD_[HH]-[MM]-[SS] OR YYYY-MM-DD|HH-MM-SS
     const m = name.match(/^(\d{4})-(\d{2})-(\d{2})[|_](\d{2})-(\d{2})-(\d{2})/);
     if(!m) return null;
-    const [ , Y,M,D,h,min,s ] = m.map(Number);
-    return Date.UTC(Y, M-1, D, h, min, s);
+    const [ ,Y,M,D,h,min,s ] = m.map(Number);
+    return Date.UTC(Y,M-1,D,h,min,s);
   }
-  function showToast(message, onView){
-    toastMsg.textContent = message;
+  function showToast(message,onView){
+    toastMsg.textContent=message;
     toast.classList.add('show');
-    const hide = ()=> toast.classList.remove('show');
-    toastDismissBtn.onclick = hide;
-    toastViewBtn.onclick = ()=>{ hide(); onView?.(); };
-    setTimeout(hide, 6000);
+    const hide=()=>toast.classList.remove('show');
+    toastDismissBtn.onclick=hide;
+    toastViewBtn.onclick=()=>{hide();onView?.();};
+    setTimeout(hide,6000);
   }
 
-  // ---------- Load & Build PAIRS ----------
   async function loadAllPairs(){
     feedPlaceholder.style.display='flex';
     feedPlaceholder.textContent='Loading from GitHub…';
     feedImg.style.display='none';
 
     const [photosList, gpsList] = await Promise.all([ ghListFolder(photosPath), ghListFolder(gpsPath) ]);
+    const photos = photosList.filter(i=>i.type==='file' && /\.(jpe?g|png)$/i.test(i.name))
+      .map(i=>({name:i.name,url:i.download_url,key:baseName(i.name),ts:tsFromName(i.name)}));
+    const gpsFiles = gpsList.filter(i=>i.type==='file' && /\.csv$/i.test(i.name))
+      .map(i=>({name:i.name,url:i.download_url,key:baseName(i.name),ts:tsFromName(i.name)}));
 
-    const photos = photosList
-      .filter(i=>i.type==='file' && /\.(jpe?g|png|webp|bmp|gif)$/i.test(i.name))
-      .map(i=>({ name:i.name, url:i.download_url, key: baseName(i.name), ts: tsFromName(i.name) }));
+    const gpsByKey=new Map(gpsFiles.map(g=>[g.key,g]));
+    const combined=photos.filter(p=>gpsByKey.has(p.key))
+      .map(p=>({key:p.key,ts:p.ts,photo:{name:p.name,url:p.url},gps:gpsByKey.get(p.key)}));
+    combined.sort((a,b)=>a.ts-b.ts);
 
-    const gpsFiles = gpsList
-      .filter(i=>i.type==='file' && /\.csv$/i.test(i.name))
-      .map(i=>({ name:i.name, url:i.download_url, key: baseName(i.name), ts: tsFromName(i.name) }));
-
-    const gpsByKey = new Map(gpsFiles.map(g => [g.key, g]));
-    const combined = photos.filter(p => gpsByKey.has(p.key))
-      .map(p => ({ key: p.key, ts: p.ts, photo:{name:p.name,url:p.url}, gps:gpsByKey.get(p.key) }));
-
-    if (!combined.length) throw new Error("No matched image+GPS pairs found");
-
-    combined.sort((a,b)=>{
-      if(a.ts!=null && b.ts!=null) return a.ts - b.ts;
-      if(a.ts!=null) return 1;
-      if(b.ts!=null) return -1;
-      return a.key.localeCompare(b.key, undefined, {numeric:true, sensitivity:'base'});
-    });
-
-    pairs = combined;
-    currentPairIndex = pairs.length - 1; // newest
-    const newest = pairs[pairs.length-1];
-    lastSeenTimestamp = newest.ts ?? Date.now();
-
+    pairs=combined;
+    currentPairIndex=pairs.length-1;
+    lastSeenTimestamp=pairs.length?pairs[pairs.length-1].ts:Date.now();
     await showPair(currentPairIndex);
     updateCounter();
   }
 
   function updateCounter(){
-    pairCounterEl.textContent = `Pair ${pairs.length ? currentPairIndex+1 : 0} of ${pairs.length}`;
+    pairCounterEl.textContent=`Pair ${pairs.length?currentPairIndex+1:0} of ${pairs.length}`;
   }
 
-  // ---------- Poll for new pairs ----------
-  async function checkForNewPairs(){
-    try{
-      const list = await ghListFolder(photosPath);
-      const imgs = list
-        .filter(i=>i.type==='file' && /\.(jpe?g|png|webp|bmp|gif)$/i.test(i.name))
-        .map(i=>({ name:i.name, ts: tsFromName(i.name) }))
-        .sort((a,b)=>{
-          if(a.ts!=null && b.ts!=null) return a.ts - b.ts;
-          if(a.ts!=null) return 1;
-          if(b.ts!=null) return -1;
-          return a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:'base'});
-        });
-
-      if(!imgs.length) return;
-      const newestImg = imgs[imgs.length-1];
-      const newestTs = newestImg.ts ?? Date.now();
-
-      if (lastSeenTimestamp == null || newestTs > lastSeenTimestamp) {
-        await loadAllPairs();
-        const newestPair = pairs[pairs.length-1];
-        lastSeenTimestamp = newestPair.ts ?? Date.now();
-        showToast(`New pair received: ${newestPair.photo.name}`, async () => {
-          currentPairIndex = pairs.length - 1;
-          await showPair(currentPairIndex);
-          updateCounter();
-        });
-      }
-    }catch(e){ /* ignore */ }
-  }
-
-  // ---------- Show one PAIR ----------
   async function showPair(i){
-    if (i < 0 || i >= pairs.length) return;
-    const pair = pairs[i];
+    if(i<0||i>=pairs.length)return;
+    const pair=pairs[i];
     await loadImage(pair.photo);
-    await loadGPSFromUrl(pair.gps.url, pair.gps.name);
+    await loadGPSFromUrl(pair.gps.url,pair.gps.name);
     updateCounter();
   }
 
-  // unified navigation
-  async function nextPair(){
-    if (currentPairIndex < pairs.length - 1) {
-      currentPairIndex++;
-      await showPair(currentPairIndex);
-    }
-  }
-  async function prevPair(){
-    if (currentPairIndex > 0) {
-      currentPairIndex--;
-      await showPair(currentPairIndex);
-    }
-  }
+  async function nextPair(){ if(currentPairIndex<pairs.length-1){currentPairIndex++;await showPair(currentPairIndex);} }
+  async function prevPair(){ if(currentPairIndex>0){currentPairIndex--;await showPair(currentPairIndex);} }
 
-  // ---------- Image loader ----------
   async function loadImage(info){
-    feedPlaceholder.style.display='flex';
-    feedPlaceholder.textContent='Loading image…';
-    feedImg.style.display='none';
-    return new Promise((resolve)=>{
-      const img = new Image();
-      const cache='?nocache='+Date.now();
-      img.onload=()=>{
-        feedImg.src=info.url+cache;
-        feedImg.style.display='block';
-        feedPlaceholder.style.display='none';
-        filenameDisplayEl.textContent=info.name;
-        connectionStatusEl.textContent='OPERATIONAL';
-        statusDot.style.background='#4CAF50';
-        resolve();
-      };
-      img.onerror=()=>{
-        feedPlaceholder.innerHTML=`<div>⚠️ Failed to load ${info.name}</div>`;
-        feedImg.style.display='none';
-        filenameDisplayEl.textContent='Image error';
-        connectionStatusEl.textContent='CONNECTION ISSUE';
-        statusDot.style.background='#F44336';
-        resolve();
-      };
+    feedPlaceholder.style.display='flex'; feedPlaceholder.textContent='Loading image…'; feedImg.style.display='none';
+    return new Promise(resolve=>{
+      const img=new Image(); const cache='?nocache='+Date.now();
+      img.onload=()=>{ feedImg.src=info.url+cache; feedImg.style.display='block'; feedPlaceholder.style.display='none'; filenameDisplayEl.textContent=info.name; connectionStatusEl.textContent='OPERATIONAL'; statusDot.style.background='#4CAF50'; resolve(); };
+      img.onerror=()=>{ feedPlaceholder.innerHTML=`<div>⚠️ Failed to load ${info.name}</div>`; feedImg.style.display='none'; filenameDisplayEl.textContent='Image error'; connectionStatusEl.textContent='CONNECTION ISSUE'; statusDot.style.background='#F44336'; resolve(); };
       img.src=info.url+cache;
     });
   }
 
-  // ---------- GPS CSV loader ----------
-  async function loadGPSFromUrl(url, uiName){
+  async function loadGPSFromUrl(url,uiName){
     try{
-      const res = await fetch(url + '?nocache=' + Date.now());
-      if(!res.ok) throw new Error(`CSV download failed ${res.status}`);
-      const csvText = await res.text();
-
-      const lines = csvText.split(/\r?\n/).filter(l => l.trim().length>0);
-      if (lines.length < 2) throw new Error('CSV has no data rows');
-
-      const header = lines[0].split(',').map(h=>h.trim().toLowerCase());
-      const idxTime = header.findIndex(h => /time/.test(h));
-      const idxLat  = header.findIndex(h => /^lat$/.test(h) || /latitude/.test(h));
-      const idxLon  = header.findIndex(h => /^lon$/.test(h) || /^lng$/.test(h) || /longitude/.test(h));
-      const idxAlt  = header.findIndex(h => /alt/.test(h));
-
-      if (idxLat === -1 || idxLon === -1) throw new Error('CSV missing lat/lon');
-
-      gpsCoordinates = lines.slice(1).map(row=>{
-        const cols = row.split(',').map(c=>c.trim());
-        const ts  = idxTime >= 0 ? cols[idxTime] : null;
-        const lat = parseFloat(cols[idxLat]);
-        const lng = parseFloat(cols[idxLon]);
-        const alt = idxAlt >= 0 ? parseFloat(cols[idxAlt]) : null;
-        return { ts, lat, lng, alt };
-      }).filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
-
-      gpsFilenameEl.textContent = uiName;
-
-      // use newest row
-      currentCoordIndex = gpsCoordinates.length - 1;
-      renderCoordList();
-      updateMapMarker(currentCoordIndex);
-
-    }catch(err){
-      gpsFilenameEl.textContent = 'GPS error';
-      currentCoordEl.textContent = '--, --';
-      currentTimeEl.textContent = 'timestamp: --';
-      console.error('GPS load error:', err);
-    }
+      const res=await fetch(url+'?nocache='+Date.now());
+      const csvText=await res.text();
+      const lines=csvText.split(/\r?\n/).filter(l=>l.trim().length>0);
+      const header=lines[0].split(',').map(h=>h.trim().toLowerCase());
+      const idxTime=header.findIndex(h=>/time/.test(h));
+      const idxLat=header.findIndex(h=>/^lat$/.test(h)||/latitude/.test(h));
+      const idxLon=header.findIndex(h=>/^lon$/.test(h)||/^lng$/.test(h)||/longitude/.test(h));
+      gpsCoordinates=lines.slice(1).map(row=>{
+        const cols=row.split(',').map(c=>c.trim());
+        return {ts:idxTime>=0?cols[idxTime]:null,lat:parseFloat(cols[idxLat]),lng:parseFloat(cols[idxLon])};
+      }).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lng));
+      gpsFilenameEl.textContent=uiName;
+      currentCoordIndex=gpsCoordinates.length-1;
+      renderCoordList(); updateMapMarker(currentCoordIndex);
+    }catch(e){gpsFilenameEl.textContent='GPS error';currentCoordEl.textContent='--, --';}
   }
 
   function renderCoordList(){
     coordinatesListEl.innerHTML='';
-    gpsCoordinates.forEach((c,i)=>{
-      const el=document.createElement('div');
-      const ts = c.ts ? ` [${c.ts}]` : '';
-      el.textContent=`${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}${ts}`;
-      if(i===currentCoordIndex) el.classList.add('active-coordinate');
-      coordinatesListEl.appendChild(el);
-    });
-    const active = coordinatesListEl.children[currentCoordIndex];
-    if (active) active.scrollIntoView({behavior:'smooth', block:'nearest'});
+    gpsCoordinates.forEach((c,i)=>{const el=document.createElement('div'); el.textContent=`${c.lat.toFixed(4)}, ${c.lng.toFixed(4)} [${c.ts||''}]`; if(i===currentCoordIndex) el.classList.add('active-coordinate'); coordinatesListEl.appendChild(el);});
   }
   function updateMapMarker(i){
-    if(!gpsCoordinates.length) return;
-    const c=gpsCoordinates[i];
-    map.setView([c.lat,c.lng],15);
-    marker.setLatLng([c.lat,c.lng]);
-    currentCoordEl.textContent=`${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`;
-    currentTimeEl.textContent = `timestamp: ${c.ts ?? '--'}`;
+    if(!gpsCoordinates.length)return;
+    const c=gpsCoordinates[i]; map.setView([c.lat,c.lng],15); marker.setLatLng([c.lat,c.lng]); currentCoordEl.textContent=`${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`; currentTimeEl.textContent=`timestamp: ${c.ts??'--'}`;
   }
 
-  // ---------- Init ----------
-  window.addEventListener('DOMContentLoaded', async ()=>{
-    prevBtn.addEventListener('click', prevPair);
-    nextBtn.addEventListener('click', nextPair);
+  window.addEventListener('DOMContentLoaded',async()=>{
+    prevBtn.addEventListener('click',prevPair);
+    nextBtn.addEventListener('click',nextPair);
     toastDismissBtn.addEventListener('click',()=>toast.classList.remove('show'));
-    toastViewBtn.addEventListener('click',async ()=>{ toast.classList.remove('show'); currentPairIndex=pairs.length-1; await showPair(currentPairIndex); });
-
+    toastViewBtn.addEventListener('click',async()=>{toast.classList.remove('show');currentPairIndex=pairs.length-1;await showPair(currentPairIndex);});
     await loadAllPairs();
-    setInterval(checkForNewPairs, 30000);
+    setInterval(loadAllPairs,30000);
   });
 </script>
 </body>
