@@ -117,6 +117,7 @@ async function loadGPS(){
     return {key:c[idxTime],lat:parseFloat(c[idxLat]),lon:parseFloat(c[idxLon])};
   });
 }
+
 async function loadAllPairs(){
   await loadGPS();
   const photos=await ghListFolder(photosPath);
@@ -127,21 +128,42 @@ async function loadAllPairs(){
       return gps?{photo:{name:i.name,url:i.download_url},gps}:null;
     }).filter(Boolean);
   pairs.sort((a,b)=>a.photo.name.localeCompare(b.photo.name));
-  currentPairIndex=pairs.length-1;
-  showPair(currentPairIndex);
+
+  if (pairs.length > 0) {
+    currentPairIndex=pairs.length-1;
+    await showPair(currentPairIndex);
+  } else {
+    currentPairIndex=0;
+  }
   updateCounter();
 }
-function updateCounter(){pairCounterEl.textContent=`Pair ${pairs.length?currentPairIndex+1:0} of ${pairs.length}`;}
-function showPair(i){if(i<0||i>=pairs.length)return;loadImage(pairs[i].photo);showGPS(pairs[i].gps);}
-function loadImage(info){
-  feedPlaceholder.style.display="flex";feedImg.style.display="none";
-  const img=new Image();img.onload=()=>{feedImg.src=info.url+"?"+Date.now();feedImg.style.display="block";feedPlaceholder.style.display="none";filenameDisplayEl.textContent=info.name;};
-  img.onerror=()=>feedPlaceholder.textContent="Error";img.src=info.url+"?"+Date.now();
+
+function updateCounter(){
+  if (pairs.length > 0) {
+    pairCounterEl.textContent=`Pair ${currentPairIndex+1} of ${pairs.length}`;
+  } else {
+    pairCounterEl.textContent="Pair 0 of 0";
+  }
 }
+
+async function showPair(i){
+  if(i<0||i>=pairs.length)return;
+  const pair=pairs[i]; await loadImage(pair.photo); showGPS(pair.gps);
+}
+
+async function loadImage(info){
+  feedPlaceholder.style.display="flex"; feedImg.style.display="none";
+  return new Promise(res=>{
+    const img=new Image(); img.onload=()=>{feedImg.src=info.url+"?"+Date.now();feedImg.style.display="block";feedPlaceholder.style.display="none";filenameDisplayEl.textContent=info.name;res();};
+    img.onerror=()=>{feedPlaceholder.textContent="Error loading";res();};
+    img.src=info.url+"?"+Date.now();
+  });
+}
+
 function showGPS(g){
   currentCoordEl.textContent=`${g.lat.toFixed(5)}, ${g.lon.toFixed(5)}`;
   currentTimeEl.textContent=`timestamp: ${g.key}`;
-  map.setView([g.lat,g.lon],15);marker.setLatLng([g.lat,g.lon]);
+  map.setView([g.lat,g.lon],15); marker.setLatLng([g.lat,g.lon]);
   coordinatesListEl.innerHTML="";
   gpsData.forEach(r=>{
     const el=document.createElement("div");
