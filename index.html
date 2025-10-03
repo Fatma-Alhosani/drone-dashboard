@@ -14,7 +14,6 @@
     .header-status{font-size:14px;color:var(--accent);display:flex;align-items:center;}
     .status-dot{width:10px;height:10px;background:var(--accent);border-radius:50%;margin-right:8px;}
 
-    /* --- One big card --- */
     .wrap{padding:28px;display:flex;justify-content:center;}
     .violations{
       width:min(1200px,100%);
@@ -27,105 +26,61 @@
       margin:0 0 14px 0; font-size:22px; color:var(--accent);
       padding-bottom:10px; border-bottom:1px solid var(--border);
     }
-
-    /* two-column content inside the card */
-    .grid{
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap:16px;
-    }
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
     @media (max-width: 980px){ .grid{ grid-template-columns: 1fr; } }
-
-    .pane{
-      background:var(--sub);
-      border:1px solid var(--border);
-      border-radius:10px;
-      padding:14px;
-      min-height:360px;
-    }
-    .pane h3{
-      margin:0 0 10px 0; font-size:14px; text-transform:uppercase; letter-spacing:.6px; color:#ddd;
-      display:flex; justify-content:space-between; align-items:center;
-    }
+    .pane{background:var(--sub);border:1px solid var(--border);border-radius:10px;padding:14px;min-height:360px;}
+    .pane h3{margin:0 0 10px 0; font-size:14px; text-transform:uppercase; letter-spacing:.6px; color:#ddd;
+      display:flex; justify-content:space-between; align-items:center;}
     .tiny{ font-size:12px; color:var(--muted); background:#2b2b2b; padding:4px 8px; border-radius:6px; }
-
-    /* image side */
     .feed-container{position:relative;width:100%;height:360px;border-radius:10px;overflow:hidden;background:#101010;}
-    .feed-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#2a2a2a;color:#bbb;flex-direction:column;text-align:center;padding:10px;gap:8px;}
-    #feedImg{width:100%;height:100%;object-fit:contain;border-radius:10px;display:none;transition:opacity .25s ease;}
-
-    /* map side */
+    .feed-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#2a2a2a;color:#bbb;}
+    #feedImg{width:100%;height:100%;object-fit:contain;border-radius:10px;display:none;}
     #map{height:260px;border-radius:10px;margin-top:6px;z-index:1;}
     .coordinates-list{max-height:152px;overflow-y:auto;background:#1c1c1c;padding:8px;border-radius:8px;margin-top:10px;font-family:monospace;border:1px solid var(--border);}
     .coordinates-list div{padding:5px;border-bottom:1px solid #2f2f2f;}
     .coordinates-list div:last-child{border-bottom:none;}
     .active-coordinate{background:#272727;font-weight:bold;}
-
-    /* unified controls */
-    .controls{
-      display:flex; align-items:center; justify-content:center; gap:10px;
-      margin:16px 6px 6px;
-    }
-    .control-btn{
-      background:#333;color:#fff;border:1px solid #444;padding:10px 18px;border-radius:8px;cursor:pointer;transition:background .2s ease;
-    }
-    .control-btn:hover{ background:#3d3d3d; }
+    .controls{display:flex; align-items:center; justify-content:center; gap:10px;margin:16px 6px 6px;}
+    .control-btn{background:#333;color:#fff;border:1px solid #444;padding:10px 18px;border-radius:8px;cursor:pointer;}
+    .control-btn:hover{background:#3d3d3d;}
     .counter{font-size:13px;color:var(--muted);padding:6px 10px;background:#232323;border:1px solid #3a3a3a;border-radius:8px;}
-
-    /* toast (kept) */
-    .toast{
-      position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px);
+    .toast{position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px);
       background:#222; color:#fff; border:1px solid #444; border-radius:10px;
       padding:12px 16px; box-shadow:0 6px 20px rgba(0,0,0,.45); display:flex; align-items:center; gap:10px;
-      opacity:0; pointer-events:none; transition:opacity .25s ease, transform .25s ease; z-index:1000;
-    }
+      opacity:0; pointer-events:none; transition:opacity .25s ease, transform .25s ease; z-index:1000;}
     .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; }
     .toast .dot{ width:10px; height:10px; border-radius:50%; background:var(--accent); }
     .toast .actions{ margin-left:8px; display:flex; gap:8px; }
     .toast button{ background:#333; color:#fff; border:1px solid #555; border-radius:6px; padding:6px 10px; cursor:pointer; }
-    .toast button:hover{ background:#3a3a3a; }
   </style>
 </head>
 <body>
 <header>
   <div>DRONE SURVEILLANCE DASHBOARD</div>
-  <div class="header-status">
-    <div class="status-dot"></div>
-    <span id="connectionStatus">OPERATIONAL</span>
-  </div>
+  <div class="header-status"><div class="status-dot"></div><span id="connectionStatus">OPERATIONAL</span></div>
 </header>
 
 <div class="wrap">
   <section class="violations">
     <h2>Possible Violations</h2>
-
     <div class="grid">
-      <!-- LEFT: Images -->
       <div class="pane">
         <h3>Images <span class="tiny" id="filenameDisplay">Loading…</span></h3>
-        <div class="feed-container">
-          <div id="feedPlaceholder" class="feed-placeholder">Loading images…</div>
-          <img id="feedImg" alt="Drone Frame">
-        </div>
+        <div class="feed-container"><div id="feedPlaceholder" class="feed-placeholder">Loading…</div><img id="feedImg"></div>
       </div>
-
-      <!-- RIGHT: GPS -->
       <div class="pane">
-        <h3>GPS Coordinates <span class="tiny" id="gpsFilename">--</span></h3>
-        <div style="background:#8b1f1f;padding:10px 12px;border-radius:8px;margin-bottom:8px;">
-          <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;font-weight:bold;">
-            <span>Current GPS Location</span>
-            <span id="currentCoord">--, --</span>
+        <h3>GPS Coordinates <span class="tiny" id="gpsFilename">gps_log.csv</span></h3>
+        <div style="background:#8b1f1f;padding:10px;border-radius:8px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;font-weight:bold;">
+            <span>Current GPS Location</span><span id="currentCoord">--, --</span>
           </div>
-          <div style="opacity:.9;font-size:12px" id="currentTime">timestamp: --</div>
+          <div style="font-size:12px" id="currentTime">timestamp: --</div>
         </div>
         <div id="map"></div>
         <h4 style="margin:12px 4px 6px">GPS Coordinates from File</h4>
         <div class="coordinates-list" id="coordinatesList"></div>
       </div>
     </div>
-
-    <!-- ONE unified control bar -->
     <div class="controls">
       <button class="control-btn" id="prevBtn">Previous</button>
       <span class="counter" id="pairCounter">Pair 0 of 0</span>
@@ -134,156 +89,99 @@
   </section>
 </div>
 
-<!-- Toast -->
-<div id="newImageToast" class="toast" role="status" aria-live="polite">
-  <span class="dot"></span>
-  <span id="toastMsg">New image received</span>
-  <div class="actions">
-    <button id="toastViewBtn" title="Open newest image">View</button>
-    <button id="toastDismissBtn" title="Dismiss">Dismiss</button>
-  </div>
+<div id="newImageToast" class="toast"><span class="dot"></span><span id="toastMsg">New image received</span>
+  <div class="actions"><button id="toastViewBtn">View</button><button id="toastDismissBtn">Dismiss</button></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script>
-  const feedImg = document.getElementById('feedImg');
-  const feedPlaceholder = document.getElementById('feedPlaceholder');
-  const filenameDisplayEl = document.getElementById('filenameDisplay');
-  const pairCounterEl = document.getElementById('pairCounter');
-  const connectionStatusEl = document.getElementById('connectionStatus');
-  const statusDot = document.querySelector('.status-dot');
-  const coordinatesListEl = document.getElementById('coordinatesList');
-  const currentCoordEl = document.getElementById('currentCoord');
-  const currentTimeEl = document.getElementById('currentTime');
-  const gpsFilenameEl = document.getElementById('gpsFilename');
-  const toast = document.getElementById('newImageToast');
-  const toastMsg = document.getElementById('toastMsg');
-  const toastViewBtn = document.getElementById('toastViewBtn');
-  const toastDismissBtn = document.getElementById('toastDismissBtn');
-  const prevBtn = document.getElementById('prevBtn');
-  const nextBtn = document.getElementById('nextBtn');
+const githubRepo = "Fatma-Alhosani/drone-dashboard";
+const photosPath = "photos";
+const gpsFile = "GPS/gps_log.csv";
 
-  const githubRepo = "Fatma-Alhosani/drone-dashboard";
-  const photosPath = "photos";
-  const gpsPath = "GPS";
+let pairs = [], currentPairIndex = 0;
+let gpsData = [];
 
-  let pairs = [];
-  let currentPairIndex = 0;
-  let gpsCoordinates = [];
-  let currentCoordIndex = 0;
-  let lastSeenTimestamp = null;
+const feedImg=document.getElementById("feedImg");
+const feedPlaceholder=document.getElementById("feedPlaceholder");
+const filenameDisplayEl=document.getElementById("filenameDisplay");
+const pairCounterEl=document.getElementById("pairCounter");
+const connectionStatusEl=document.getElementById("connectionStatus");
+const statusDot=document.querySelector(".status-dot");
+const coordinatesListEl=document.getElementById("coordinatesList");
+const currentCoordEl=document.getElementById("currentCoord");
+const currentTimeEl=document.getElementById("currentTime");
 
-  const map = L.map('map').setView([37.7749,-122.4194],13);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution:'&copy; OpenStreetMap contributors' }).addTo(map);
-  const marker = L.marker([37.7749,-122.4194]).addTo(map);
+const map = L.map('map').setView([0,0],2);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution:'&copy; OpenStreetMap contributors' }).addTo(map);
+const marker = L.marker([0,0]).addTo(map);
 
-  function ghHeaders(){ return { 'Accept': 'application/vnd.github+json' }; }
-  async function ghListFolder(path){
-    const url = `https://api.github.com/repos/${githubRepo}/contents/${path}`;
-    const res = await fetch(url, { headers: ghHeaders() });
-    if(!res.ok) throw new Error(`GitHub error ${res.status}`);
-    return res.json();
-  }
-  function baseName(name){ const i=name.lastIndexOf('.'); return i>0?name.slice(0,i):name; }
-  function tsFromName(name){
-    const m = name.match(/^(\d{4})-(\d{2})-(\d{2})[|_](\d{2})-(\d{2})-(\d{2})/);
-    if(!m) return null;
-    const [ ,Y,M,D,h,min,s ] = m.map(Number);
-    return Date.UTC(Y,M-1,D,h,min,s);
-  }
-  function showToast(message,onView){
-    toastMsg.textContent=message;
-    toast.classList.add('show');
-    const hide=()=>toast.classList.remove('show');
-    toastDismissBtn.onclick=hide;
-    toastViewBtn.onclick=()=>{hide();onView?.();};
-    setTimeout(hide,6000);
-  }
+async function ghListFolder(path){
+  const url=`https://api.github.com/repos/${githubRepo}/contents/${path}`;
+  const res=await fetch(url); if(!res.ok) throw new Error("GitHub error"); return res.json();
+}
+async function ghGetFile(path){
+  const url=`https://raw.githubusercontent.com/${githubRepo}/main/${path}`;
+  const res=await fetch(url); if(!res.ok) throw new Error("File error"); return res.text();
+}
+function baseName(name){const i=name.lastIndexOf('.'); return i>0?name.slice(0,i):name;}
 
-  async function loadAllPairs(){
-    feedPlaceholder.style.display='flex';
-    feedPlaceholder.textContent='Loading from GitHub…';
-    feedImg.style.display='none';
-
-    const [photosList, gpsList] = await Promise.all([ ghListFolder(photosPath), ghListFolder(gpsPath) ]);
-    const photos = photosList.filter(i=>i.type==='file' && /\.(jpe?g|png)$/i.test(i.name))
-      .map(i=>({name:i.name,url:i.download_url,key:baseName(i.name),ts:tsFromName(i.name)}));
-    const gpsFiles = gpsList.filter(i=>i.type==='file' && /\.csv$/i.test(i.name))
-      .map(i=>({name:i.name,url:i.download_url,key:baseName(i.name),ts:tsFromName(i.name)}));
-
-    const gpsByKey=new Map(gpsFiles.map(g=>[g.key,g]));
-    const combined=photos.filter(p=>gpsByKey.has(p.key))
-      .map(p=>({key:p.key,ts:p.ts,photo:{name:p.name,url:p.url},gps:gpsByKey.get(p.key)}));
-    combined.sort((a,b)=>a.ts-b.ts);
-
-    pairs=combined;
-    currentPairIndex=pairs.length-1;
-    lastSeenTimestamp=pairs.length?pairs[pairs.length-1].ts:Date.now();
-    await showPair(currentPairIndex);
-    updateCounter();
-  }
-
-  function updateCounter(){
-    pairCounterEl.textContent=`Pair ${pairs.length?currentPairIndex+1:0} of ${pairs.length}`;
-  }
-
-  async function showPair(i){
-    if(i<0||i>=pairs.length)return;
-    const pair=pairs[i];
-    await loadImage(pair.photo);
-    await loadGPSFromUrl(pair.gps.url,pair.gps.name);
-    updateCounter();
-  }
-
-  async function nextPair(){ if(currentPairIndex<pairs.length-1){currentPairIndex++;await showPair(currentPairIndex);} }
-  async function prevPair(){ if(currentPairIndex>0){currentPairIndex--;await showPair(currentPairIndex);} }
-
-  async function loadImage(info){
-    feedPlaceholder.style.display='flex'; feedPlaceholder.textContent='Loading image…'; feedImg.style.display='none';
-    return new Promise(resolve=>{
-      const img=new Image(); const cache='?nocache='+Date.now();
-      img.onload=()=>{ feedImg.src=info.url+cache; feedImg.style.display='block'; feedPlaceholder.style.display='none'; filenameDisplayEl.textContent=info.name; connectionStatusEl.textContent='OPERATIONAL'; statusDot.style.background='#4CAF50'; resolve(); };
-      img.onerror=()=>{ feedPlaceholder.innerHTML=`<div>⚠️ Failed to load ${info.name}</div>`; feedImg.style.display='none'; filenameDisplayEl.textContent='Image error'; connectionStatusEl.textContent='CONNECTION ISSUE'; statusDot.style.background='#F44336'; resolve(); };
-      img.src=info.url+cache;
-    });
-  }
-
-  async function loadGPSFromUrl(url,uiName){
-    try{
-      const res=await fetch(url+'?nocache='+Date.now());
-      const csvText=await res.text();
-      const lines=csvText.split(/\r?\n/).filter(l=>l.trim().length>0);
-      const header=lines[0].split(',').map(h=>h.trim().toLowerCase());
-      const idxTime=header.findIndex(h=>/time/.test(h));
-      const idxLat=header.findIndex(h=>/^lat$/.test(h)||/latitude/.test(h));
-      const idxLon=header.findIndex(h=>/^lon$/.test(h)||/^lng$/.test(h)||/longitude/.test(h));
-      gpsCoordinates=lines.slice(1).map(row=>{
-        const cols=row.split(',').map(c=>c.trim());
-        return {ts:idxTime>=0?cols[idxTime]:null,lat:parseFloat(cols[idxLat]),lng:parseFloat(cols[idxLon])};
-      }).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lng));
-      gpsFilenameEl.textContent=uiName;
-      currentCoordIndex=gpsCoordinates.length-1;
-      renderCoordList(); updateMapMarker(currentCoordIndex);
-    }catch(e){gpsFilenameEl.textContent='GPS error';currentCoordEl.textContent='--, --';}
-  }
-
-  function renderCoordList(){
-    coordinatesListEl.innerHTML='';
-    gpsCoordinates.forEach((c,i)=>{const el=document.createElement('div'); el.textContent=`${c.lat.toFixed(4)}, ${c.lng.toFixed(4)} [${c.ts||''}]`; if(i===currentCoordIndex) el.classList.add('active-coordinate'); coordinatesListEl.appendChild(el);});
-  }
-  function updateMapMarker(i){
-    if(!gpsCoordinates.length)return;
-    const c=gpsCoordinates[i]; map.setView([c.lat,c.lng],15); marker.setLatLng([c.lat,c.lng]); currentCoordEl.textContent=`${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`; currentTimeEl.textContent=`timestamp: ${c.ts??'--'}`;
-  }
-
-  window.addEventListener('DOMContentLoaded',async()=>{
-    prevBtn.addEventListener('click',prevPair);
-    nextBtn.addEventListener('click',nextPair);
-    toastDismissBtn.addEventListener('click',()=>toast.classList.remove('show'));
-    toastViewBtn.addEventListener('click',async()=>{toast.classList.remove('show');currentPairIndex=pairs.length-1;await showPair(currentPairIndex);});
-    await loadAllPairs();
-    setInterval(loadAllPairs,30000);
+async function loadGPS(){
+  const text=await ghGetFile(gpsFile);
+  const lines=text.split(/\r?\n/).filter(l=>l.trim().length>0);
+  const header=lines[0].split(",");
+  const idxTime=header.findIndex(h=>h.includes("timestamp"));
+  const idxLat=header.findIndex(h=>h.includes("lat"));
+  const idxLon=header.findIndex(h=>h.includes("lon"));
+  gpsData=lines.slice(1).map(r=>{
+    const cols=r.split(",");
+    return {key:cols[idxTime], lat:parseFloat(cols[idxLat]), lon:parseFloat(cols[idxLon])};
   });
+}
+async function loadAllPairs(){
+  await loadGPS();
+  const photos=await ghListFolder(photosPath);
+  pairs=photos.filter(i=>i.type==="file"&&/\.(jpg|png)$/i.test(i.name))
+    .map(i=>{
+      const key=baseName(i.name);
+      const gps=gpsData.find(g=>g.key===key);
+      return gps?{photo:{name:i.name,url:i.download_url},gps}:null;
+    }).filter(Boolean);
+  pairs.sort((a,b)=>a.photo.name.localeCompare(b.photo.name));
+  currentPairIndex=pairs.length-1;
+  await showPair(currentPairIndex);
+  updateCounter();
+}
+function updateCounter(){pairCounterEl.textContent=`Pair ${pairs.length?currentPairIndex+1:0} of ${pairs.length}`;}
+async function showPair(i){
+  if(i<0||i>=pairs.length)return;
+  const pair=pairs[i]; await loadImage(pair.photo); showGPS(pair.gps);
+}
+async function loadImage(info){
+  feedPlaceholder.style.display="flex"; feedImg.style.display="none";
+  return new Promise(res=>{
+    const img=new Image(); img.onload=()=>{feedImg.src=info.url+"?"+Date.now();feedImg.style.display="block";feedPlaceholder.style.display="none";filenameDisplayEl.textContent=info.name;res();};
+    img.onerror=()=>{feedPlaceholder.textContent="Error loading";res();};
+    img.src=info.url+"?"+Date.now();
+  });
+}
+function showGPS(g){
+  currentCoordEl.textContent=`${g.lat.toFixed(5)}, ${g.lon.toFixed(5)}`;
+  currentTimeEl.textContent=`timestamp: ${g.key}`;
+  map.setView([g.lat,g.lon],15); marker.setLatLng([g.lat,g.lon]);
+  coordinatesListEl.innerHTML="";
+  gpsData.forEach(r=>{
+    const el=document.createElement("div");
+    el.textContent=`${r.lat.toFixed(5)}, ${r.lon.toFixed(5)} [${r.key}]`;
+    if(r.key===g.key) el.classList.add("active-coordinate");
+    coordinatesListEl.appendChild(el);
+  });
+}
+
+document.getElementById("nextBtn").onclick=()=>{if(currentPairIndex<pairs.length-1){currentPairIndex++;showPair(currentPairIndex);updateCounter();}};
+document.getElementById("prevBtn").onclick=()=>{if(currentPairIndex>0){currentPairIndex--;showPair(currentPairIndex);updateCounter();}};
+
+window.addEventListener("DOMContentLoaded",loadAllPairs);
 </script>
 </body>
 </html>
