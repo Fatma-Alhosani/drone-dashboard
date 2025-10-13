@@ -1,6 +1,3 @@
-here you go — full drop-in HTML (auto-updates from your repo, pairs photos↔GPS by nearest timestamp, polls every 30s):
-
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -63,7 +60,7 @@ here you go — full drop-in HTML (auto-updates from your repo, pairs photos↔G
         <div class="feed-container"><div id="feedPlaceholder" class="feed-placeholder">Loading…</div><img id="feedImg" alt=""></div>
       </div>
       <div class="pane">
-        <h3>GPS Coordinates <span class="tiny">gps_log.csv</span></h3>
+        <h3>GPS Coordinates <span class="tiny">TXT files</span></h3>
         <div style="background:#8b1f1f;padding:10px;border-radius:8px;margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;font-weight:bold;">
             <span>Current GPS Location</span><span id="currentCoord">--, --</span>
@@ -71,7 +68,7 @@ here you go — full drop-in HTML (auto-updates from your repo, pairs photos↔G
           <div style="font-size:12px" id="currentTime">timestamp: --</div>
         </div>
         <div id="map"></div>
-        <h4 style="margin:12px 4px 6px">GPS Coordinates from File</h4>
+        <h4 style="margin:12px 4px 6px">GPS Coordinates</h4>
         <div class="coordinates-list" id="coordinatesList"></div>
       </div>
     </div>
@@ -86,18 +83,19 @@ here you go — full drop-in HTML (auto-updates from your repo, pairs photos↔G
 
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script>
-/* ====== CONFIG (edit if you change repo/paths) ====== */
-const githubRepo = "Fatma-Alhosani/drone-dashboard"; // owner/repo
-const photosPath = "photos";                          // folder with images
-const gpsFile    = "GPS/gps_log.csv";                 // CSV with timestamps,lat,lon
-const POLL_MS    = 30000;                             // how often to check for updates
-const MAX_DELTA_MS = 30 * 1000;                       // photo↔GPS pairing window
-/* =================================================== */
+/* ====== CONFIG ====== */
+const githubRepo   = "Fatma-Alhosani/drone-dashboard"; // owner/repo
+const photosPath   = "photos";                          // folder with images
+const gpsFolder    = "GPS";                             // folder with txt files
+const POLL_MS      = 30000;                             // poll interval
+const MAX_DELTA_MS = 60 * 1000;                         // photo within 60s of GPS
+/* ==================== */
 
 let pairs = [], gpsData = [], currentPairIndex = 0;
-let photosFingerprint = "", gpsSha = "";
+let photosFingerprint = "", gpsFingerprint = "";
+const gpsCache = new Map(); // path -> { sha, entry }
 
-// DOM
+/* ---------- DOM ---------- */
 const feedImg = document.getElementById("feedImg");
 const feedPlaceholder = document.getElementById("feedPlaceholder");
 const filenameDisplayEl = document.getElementById("filenameDisplay");
@@ -106,150 +104,192 @@ const currentCoordEl = document.getElementById("currentCoord");
 const currentTimeEl = document.getElementById("currentTime");
 const coordinatesListEl = document.getElementById("coordinatesList");
 
-// Map
+/* ---------- Map ---------- */
 const map = L.map("map").setView([0,0], 2);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
   {attribution:"&copy; OpenStreetMap"}).addTo(map);
 const marker = L.marker([0,0]).addTo(map);
 
-// ---- GitHub helpers ----
-async function ghGetJSON(path){
+/* ---------- GitHub helpers ---------- */
+async function ghJSON(path){
   const r = await fetch(`https://api.github.com/repos/${githubRepo}/${path}`);
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
-async function ghGetRaw(path){
+async function ghRaw(path){
   const r = await fetch(`https://raw.githubusercontent.com/${githubRepo}/main/${path}?ts=${Date.now()}`);
   if (!r.ok) throw new Error(await r.text());
   return r.text();
 }
 
-// ---- parsing / pairing ----
+/* ---------- parsing helpers ---------- */
+function baseName(filename){ const i = filename.lastIndexOf('.'); return i>0 ? filename.slice(0,i) : filename; }
+
+/* Accept timestamp formats:
+   - 2025-10-12|14-34-39
+   - 2025-10-12_14-34-39
+   - 2025-10-12 14:34:39
+   - tolerant mix of separators
+*/
 function parseTsToMs(s){
   if (!s) return NaN;
   let m;
-  // 1) YYYY-MM-DD|HH-MM-SS or YYYY-MM-DD_HH-MM-SS
-  m = s.match(/(\d{4}-\d{2}-\d{2})[|_](\d{2})-(\d{2})-(\d{2})/);
+  m = s.match(/^(\d{4}-\d{2}-\d{2})[|_](\d{2})-(\d{2})-(\d{2})$/);
   if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
-  // 2) YYYY-MM-DD HH:MM:SS (CSV)
-  m = s.match(/(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+  m = s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/);
   if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
-  // 3) Looser: 2025-09-30|14-30-25 (or with colons)
-  m = s.match(/(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})/);
+  m = s.match(/^(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})$/);
   if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
   return NaN;
 }
-function baseName(filename){
-  const i = filename.lastIndexOf('.');
-  return i > 0 ? filename.slice(0, i) : filename;
-}
-function findNearestGPS(tsMs){
-  if (!gpsData.length || !Number.isFinite(tsMs)) return null;
-  // binary search for closest
-  let lo = 0, hi = gpsData.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (gpsData[mid].tsMs < tsMs) lo = mid + 1; else hi = mid;
+
+/* Parse coordinates from txt content.
+   Supports:
+   - "24.12345, 54.98765"
+   - "lat: 24.123 lon: 54.987"
+   - first two floats in the file (validated by range)
+*/
+function parseCoordsFromText(text){
+  // Try explicit lat/lon labels first
+  let m = text.match(/lat\D*(-?\d+(?:\.\d+)?)\D*lon\D*(-?\d+(?:\.\d+)?)/i);
+  if (!m) m = text.match(/(-?\d+(?:\.\d+)?)\D*,\D*(-?\d+(?:\.\d+)?)/); // "lat,lon"
+  if (!m) {
+    // finally: first two floats in the text
+    const all = [...text.matchAll(/-?\d+(?:\.\d+)?/g)].map(x => parseFloat(x[0]));
+    if (all.length >= 2) m = [null, all[0], all[1]];
   }
-  const candidates = [gpsData[lo]];
-  if (lo > 0) candidates.push(gpsData[lo-1]);
-  let best = null, bestDiff = Infinity;
-  for (const g of candidates) {
-    const d = Math.abs(g.tsMs - tsMs);
-    if (d < bestDiff) { best = g; bestDiff = d; }
-  }
-  return bestDiff <= MAX_DELTA_MS ? best : null;
+  if (!m) return null;
+  const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return { lat, lon };
 }
 
-// ---- loading ----
-async function loadGPS(){
-  const meta = await ghGetJSON(`contents/${gpsFile}`);
-  if (meta.sha === gpsSha && gpsData.length) return;
-  gpsSha = meta.sha;
+/* ---------- load GPS from TXT files only (with sha caching) ---------- */
+async function loadGpsFromTxt(){
+  const list = await ghJSON(`contents/${gpsFolder}`);
+  const txtFiles = list.filter(i => i.type === "file" && /\.txt$/i.test(i.name));
 
-  const text = await ghGetRaw(gpsFile);
-  const lines = text.split(/\r?\n/).filter(l=>l.trim());
-  if (!lines.length) { gpsData = []; return; }
+  // folder fingerprint to early-exit when nothing changed
+  const newGpsFingerprint = txtFiles.map(f => `${f.name}:${f.sha}`).join("|");
+  if (newGpsFingerprint === gpsFingerprint && gpsData.length) return false;
+  gpsFingerprint = newGpsFingerprint;
 
-  const header = lines[0].split(",");
-  const idxTime = header.findIndex(h => /time|timestamp/i.test(h));
-  const idxLat  = header.findIndex(h => /lat/i.test(h));
-  const idxLon  = header.findIndex(h => /lon|lng/i.test(h));
+  // fetch & parse only files with new sha (cache others)
+  for (const f of txtFiles) {
+    const path = `${gpsFolder}/${f.name}`;
+    const cached = gpsCache.get(path);
+    if (cached && cached.sha === f.sha) continue; // unchanged
 
-  gpsData = lines.slice(1).map(r => {
-    const c = r.split(",");
-    const key = (c[idxTime] || "").trim();
-    const tsMs = parseTsToMs(key);
-    return { key, tsMs, lat: parseFloat(c[idxLat]), lon: parseFloat(c[idxLon]) };
-  }).filter(g => Number.isFinite(g.tsMs) && Number.isFinite(g.lat) && Number.isFinite(g.lon));
+    // fetch raw content and parse
+    let entry = null;
+    try {
+      const text = await ghRaw(path);
+      const coords = parseCoordsFromText(text);
+      if (coords) {
+        const key = baseName(f.name);
+        const tsMs = parseTsToMs(key);
+        if (Number.isFinite(tsMs)) {
+          entry = { key, tsMs, lat: coords.lat, lon: coords.lon, path };
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to read", f.name, e);
+    }
+    gpsCache.set(path, { sha: f.sha, entry });
+  }
 
+  // Build gpsData from cached parsed entries
+  gpsData = [];
+  for (const { entry } of gpsCache.values()) {
+    if (entry) gpsData.push(entry);
+  }
   gpsData.sort((a,b) => a.tsMs - b.tsMs);
+
+  console.info(`GPS (TXT) loaded: ${gpsData.length} entries from ${txtFiles.length} files`);
+  return true;
 }
 
-async function loadPhotosAndBuildPairs(){
-  const items = await ghGetJSON(`contents/${photosPath}`);
+/* ---------- load photos list ---------- */
+async function loadPhotos(){
+  const items = await ghJSON(`contents/${photosPath}`);
   const files = items.filter(i => i.type === "file" && /\.(jpe?g|png)$/i.test(i.name));
-
-  const newFingerprint = files.map(f => f.sha).join(":");
-  if (newFingerprint === photosFingerprint && pairs.length) return false;
-  photosFingerprint = newFingerprint;
+  const newFp = files.map(f => f.sha).join(":");
+  if (newFp === photosFingerprint && pairs.length) return null;
+  photosFingerprint = newFp;
 
   const photos = files.map(f => {
     const tsMs = parseTsToMs(baseName(f.name));
     return { name: f.name, url: f.download_url, tsMs };
-  });
+  }).filter(p => Number.isFinite(p.tsMs));
 
-  const newPairs = [];
-  const unmatchedPhotos = [];
-  photos.forEach(p => {
-    const g = findNearestGPS(p.tsMs);
-    if (g) newPairs.push({ photo: p, gps: g });
-    else unmatchedPhotos.push(p.name);
-  });
-
-  newPairs.sort((a,b) => (a.photo.tsMs || 0) - (b.photo.tsMs || 0));
-  pairs = newPairs;
-
-  if (unmatchedPhotos.length) {
-    console.warn(`Unmatched photos (${unmatchedPhotos.length}):`, unmatchedPhotos.slice(0,5), '…');
-  }
-  if (pairs.length) currentPairIndex = pairs.length - 1;
-  return true;
+  photos.sort((a,b) => a.tsMs - b.tsMs);
+  return photos;
 }
 
-// ---- UI ----
+/* ---------- GPS-driven pairing: for each GPS pick nearest unused photo ---------- */
+function buildPairsGpsDriven(photos){
+  if (!gpsData.length || !photos || !photos.length) { pairs = []; return; }
+
+  function nearestPhotoIdx(tsMs){
+    let lo=0, hi=photos.length-1;
+    while (lo<hi){ const mid=(lo+hi)>>1; (photos[mid].tsMs<tsMs)? lo=mid+1 : hi=mid; }
+    const cand=[lo]; if(lo>0)cand.push(lo-1);
+    let best=-1, diff=Infinity;
+    for (const i of cand){ const d=Math.abs(photos[i].tsMs-tsMs); if(d<diff){diff=d; best=i;} }
+    return { idx: best, diff };
+  }
+
+  const used = new Array(photos.length).fill(false);
+  const out = [];
+
+  for (const g of gpsData) {
+    const {idx, diff} = nearestPhotoIdx(g.tsMs);
+    if (idx>=0 && diff<=MAX_DELTA_MS && !used[idx]) {
+      used[idx] = true;
+      out.push({ gps:g, photo:photos[idx] });
+    } else {
+      // keep unmatched GPS? uncomment to include placeholders:
+      // out.push({ gps:g, photo:null });
+      // For now we skip unmatched GPS to keep UI concise.
+    }
+  }
+
+  pairs = out;
+  if (pairs.length) currentPairIndex = Math.min(currentPairIndex, pairs.length-1);
+  console.info(`GPS-driven pairing: matched ${pairs.length} pairs`);
+}
+
+/* ---------- UI helpers ---------- */
 function updateCounter(){
   pairCounterEl.textContent = `Pair ${pairs.length ? (currentPairIndex+1) : 0} of ${pairs.length}`;
 }
 async function showPair(i){
   if (i<0 || i>=pairs.length) return;
   const pair = pairs[i];
-  await loadImage(pair.photo);
+  if (!pair.photo){
+    feedImg.style.display="none"; feedPlaceholder.style.display="flex";
+    filenameDisplayEl.textContent="(no photo)";
+  } else {
+    await loadImage(pair.photo);
+  }
   showGPS(pair.gps);
   updateCounter();
 }
 async function loadImage(info){
-  feedPlaceholder.style.display = "flex";
-  feedImg.style.display = "none";
+  feedPlaceholder.style.display="flex"; feedImg.style.display="none";
   return new Promise(res=>{
     const img = new Image();
-    const url = info.url + "?" + Date.now();
-    img.onload = ()=>{
-      feedImg.src = url;
-      feedImg.style.display = "block";
-      feedPlaceholder.style.display = "none";
-      filenameDisplayEl.textContent = info.name;
-      res();
-    };
-    img.onerror = ()=>{ feedPlaceholder.textContent = "Error loading image"; res(); };
+    const url = info.url + "?" + Date.now(); // cache-bust
+    img.onload=()=>{ feedImg.src=url; feedImg.style.display="block"; feedPlaceholder.style.display="none"; filenameDisplayEl.textContent = info.name; res(); };
+    img.onerror=()=>{ feedPlaceholder.textContent="Error loading image"; res(); };
     img.src = url;
   });
 }
 function showGPS(g){
   currentCoordEl.textContent = `${g.lat.toFixed(5)}, ${g.lon.toFixed(5)}`;
   currentTimeEl.textContent  = `timestamp: ${g.key}`;
-  map.setView([g.lat,g.lon], 15);
-  marker.setLatLng([g.lat,g.lon]);
+  map.setView([g.lat,g.lon], 15); marker.setLatLng([g.lat,g.lon]);
 
   coordinatesListEl.innerHTML = "";
   gpsData.forEach(r=>{
@@ -260,9 +300,9 @@ function showGPS(g){
   });
 }
 
-// ---- controls ----
-document.getElementById("nextBtn").onclick = ()=>{ if(currentPairIndex < pairs.length-1){ currentPairIndex++; showPair(currentPairIndex);} };
-document.getElementById("prevBtn").onclick = ()=>{ if(currentPairIndex > 0){ currentPairIndex--; showPair(currentPairIndex);} };
+/* ---------- controls ---------- */
+document.getElementById("nextBtn").onclick = ()=>{ if(currentPairIndex<pairs.length-1){ currentPairIndex++; showPair(currentPairIndex);} };
+document.getElementById("prevBtn").onclick = ()=>{ if(currentPairIndex>0){ currentPairIndex--; showPair(currentPairIndex);} };
 document.getElementById("refreshBtn").onclick = manualRefresh;
 window.addEventListener("keydown",e=>{
   if(e.key==="ArrowRight") document.getElementById("nextBtn").click();
@@ -270,29 +310,29 @@ window.addEventListener("keydown",e=>{
   if(e.key.toLowerCase()==="r") document.getElementById("refreshBtn").click();
 });
 
-// ---- theme toggle ----
+// theme toggle
 const themeToggle=document.getElementById("themeToggle");
 function setTheme(light){document.body.classList.toggle("light",light);themeToggle.textContent=light?"☀️ Light":"🌙 Dark";localStorage.setItem("theme",light?"light":"dark");}
 themeToggle.onclick=()=>setTheme(!document.body.classList.contains("light"));
 if(localStorage.getItem("theme")==="light")setTheme(true);
 
-// ---- refresh loop ----
+/* ---------- refresh loop ---------- */
+async function reloadGpsDriven(){
+  await loadGpsFromTxt();           // <-- TXT only
+  const photos = await loadPhotos();
+  if (!photos && pairs.length) return false; // nothing changed
+  buildPairsGpsDriven(photos || []);
+  return true;
+}
 async function rebuildAndShowLatest(){
-  await loadGPS();
-  const changed = await loadPhotosAndBuildPairs();
-  if (!pairs.length){ updateCounter(); return; }
+  const changed = await reloadGpsDriven();
+  if (!pairs.length){ updateCounter(); feedImg.style.display="none"; feedPlaceholder.style.display="flex"; return; }
   if (changed) await showPair(currentPairIndex);
 }
-async function manualRefresh(){
-  photosFingerprint = ""; gpsSha = "";
-  await rebuildAndShowLatest();
-}
+async function manualRefresh(){ photosFingerprint=""; gpsFingerprint=""; await rebuildAndShowLatest(); }
 
 window.addEventListener("DOMContentLoaded", rebuildAndShowLatest);
 setInterval(rebuildAndShowLatest, POLL_MS);
 </script>
 </body>
 </html>
-```
-
-If you later standardize your filenames/timestamps, we can switch from “nearest timestamp” pairing to strict name matching.
