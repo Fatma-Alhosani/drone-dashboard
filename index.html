@@ -1,82 +1,156 @@
-<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script>
 const githubRepo = "Fatma-Alhosani/drone-dashboard";
 const photosPath = "photos";
 const gpsFile    = "GPS/gps_log.csv";
 
 let pairs = [], gpsData = [], currentPairIndex = 0;
+let photosFingerprint = "", gpsSha = "";
 
-// --- change detection state ---
-let photosFingerprint = ""; // concat of file shas
-let gpsSha = "";            // sha of gps_log.csv
-
-// DOM
 const feedImg = document.getElementById("feedImg");
 const feedPlaceholder = document.getElementById("feedPlaceholder");
 const filenameDisplayEl = document.getElementById("filenameDisplay");
 const pairCounterEl = document.getElementById("pairCounter");
 const currentCoordEl = document.getElementById("currentCoord");
 const currentTimeEl = document.getElementById("currentTime");
-const coordinatesListEl = document.getElementById("coordinatesList"); // <-- was missing
+const coordinatesListEl = document.getElementById("coordinatesList");
 
-// Map
 const map = L.map("map").setView([0,0], 2);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
   {attribution:"&copy; OpenStreetMap"}).addTo(map);
 const marker = L.marker([0,0]).addTo(map);
 
-// --- GitHub helpers (no token needed, read-only) ---
-async function ghGetJSON(path){ const r=await fetch(`https://api.github.com/repos/${githubRepo}/${path}`); if(!r.ok) throw new Error(await r.text()); return r.json(); }
-async function ghGetRaw(path){ const r=await fetch(`https://raw.githubusercontent.com/${githubRepo}/main/${path}?ts=${Date.now()}`); if(!r.ok) throw new Error(await r.text()); return r.text(); }
+// ---------- helpers ----------
+async function ghGetJSON(path){
+  const r = await fetch(`https://api.github.com/repos/${githubRepo}/${path}`);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function ghGetRaw(path){
+  const r = await fetch(`https://raw.githubusercontent.com/${githubRepo}/main/${path}?ts=${Date.now()}`);
+  if (!r.ok) throw new Error(await r.text());
+  return r.text();
+}
 
-// --- data loading ---
-function baseName(name){ const i=name.lastIndexOf('.'); return i>0?name.slice(0,i):name; }
+// Parse various timestamp formats to milliseconds (UTC).
+function parseTsToMs(s){
+  if (!s) return NaN;
+  let m;
+  // 1) YYYY-MM-DD|HH-MM-SS   or   YYYY-MM-DD_HH-MM-SS
+  m = s.match(/(\d{4}-\d{2}-\d{2})[|_](\d{2})-(\d{2})-(\d{2})/);
+  if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
+  // 2) YYYY-MM-DD HH:MM:SS
+  m = s.match(/(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+  if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
+  // 3) Bare photo basename like 2025-09-30|14-30-25 (no extension)
+  m = s.match(/(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})/); // tolerate separators
+  if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
+  return NaN;
+}
 
+function baseName(filename){
+  const i = filename.lastIndexOf('.');
+  return i > 0 ? filename.slice(0, i) : filename;
+}
+
+// ---------- load GPS ----------
 async function loadGPS(){
-  // use Contents API to get sha for change detection, fetch raw for speed
   const meta = await ghGetJSON(`contents/${gpsFile}`);
-  if (meta.sha !== gpsSha) {
-    gpsSha = meta.sha;
-    const text = await ghGetRaw(gpsFile);
-    const lines = text.split(/\r?\n/).filter(l=>l.trim());
-    const header = lines[0].split(",");
-    const idxTime = header.findIndex(h=>/time|timestamp/i.test(h));
-    const idxLat  = header.findIndex(h=>/lat/i.test(h));
-    const idxLon  = header.findIndex(h=>/lon|lng/i.test(h));
-    gpsData = lines.slice(1).map(r=>{
-      const c=r.split(",");
-      return { key:c[idxTime], lat:parseFloat(c[idxLat]), lon:parseFloat(c[idxLon]) };
-    });
+  if (meta.sha === gpsSha && gpsData.length) return; // no change
+  gpsSha = meta.sha;
+
+  const text = await ghGetRaw(gpsFile);
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) { gpsData = []; return; }
+
+  const header = lines[0].split(",");
+  const idxTime = header.findIndex(h => /time|timestamp/i.test(h));
+  const idxLat  = header.findIndex(h => /lat/i.test(h));
+  const idxLon  = header.findIndex(h => /lon|lng/i.test(h));
+
+  gpsData = lines.slice(1).map(r => {
+    const c = r.split(",");
+    const key = (c[idxTime] || "").trim();
+    const tsMs = parseTsToMs(key);
+    return {
+      key,
+      tsMs,
+      lat: parseFloat(c[idxLat]),
+      lon: parseFloat(c[idxLon])
+    };
+  }).filter(g => Number.isFinite(g.tsMs) && Number.isFinite(g.lat) && Number.isFinite(g.lon));
+
+  // Keep GPS sorted by time
+  gpsData.sort((a,b) => a.tsMs - b.tsMs);
+}
+
+// ---------- load photos & pair ----------
+const MAX_DELTA_MS = 30 * 1000; // 30 seconds window
+
+function findNearestGPS(tsMs){
+  if (!gpsData.length || !Number.isFinite(tsMs)) return null;
+  // binary search for closest
+  let lo = 0, hi = gpsData.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (gpsData[mid].tsMs < tsMs) lo = mid + 1; else hi = mid;
   }
+  const candidates = [gpsData[lo]];
+  if (lo > 0) candidates.push(gpsData[lo-1]);
+  let best = null, bestDiff = Infinity;
+  for (const g of candidates) {
+    const d = Math.abs(g.tsMs - tsMs);
+    if (d < bestDiff) { best = g; bestDiff = d; }
+  }
+  return bestDiff <= MAX_DELTA_MS ? best : null;
 }
 
 async function loadPhotosAndBuildPairs(){
-  // list photos folder, build fingerprint from shas (changes when files change)
   const items = await ghGetJSON(`contents/${photosPath}`);
-  const files = items.filter(i=>i.type==="file" && /\.(jpg|jpeg|png)$/i.test(i.name));
-  const newFingerprint = files.map(f=>f.sha).join(":");
-  if (newFingerprint === photosFingerprint && gpsData.length) return false; // nothing new
+  const files = items.filter(i => i.type === "file" && /\.(jpe?g|png)$/i.test(i.name));
 
+  // fingerprint → if unchanged, skip rebuild
+  const newFingerprint = files.map(f => f.sha).join(":");
+  if (newFingerprint === photosFingerprint && pairs.length) return false;
   photosFingerprint = newFingerprint;
 
-  // build pairs by matching photo basename to gps timestamp key
-  pairs = files.map(i=>{
-    const key = baseName(i.name);
-    const gps = gpsData.find(g=>g.key === key);
-    return gps ? { photo:{ name:i.name, url:i.download_url }, gps } : null;
-  }).filter(Boolean);
+  // Build photo objects with parsed timestamps
+  const photos = files.map(f => {
+    const tsMs = parseTsToMs(baseName(f.name));
+    return { name: f.name, url: f.download_url, tsMs };
+  });
 
-  pairs.sort((a,b)=>a.photo.name.localeCompare(b.photo.name));
+  // Pair each photo with nearest GPS within tolerance
+  const newPairs = [];
+  const unmatchedPhotos = [];
+  photos.forEach(p => {
+    const g = findNearestGPS(p.tsMs);
+    if (g) newPairs.push({ photo: p, gps: g });
+    else unmatchedPhotos.push(p.name);
+  });
+
+  // Sort by photo time/name
+  newPairs.sort((a,b) => (a.photo.tsMs || 0) - (b.photo.tsMs || 0));
+  pairs = newPairs;
+
+  if (unmatchedPhotos.length) {
+    console.warn(`Unmatched photos (${unmatchedPhotos.length}):`, unmatchedPhotos.slice(0,5), '…');
+  }
+  const gpsOnly = gpsData.length - pairs.length;
+  if (gpsOnly > 0) {
+    console.info(`GPS entries without photo match (approx): ${gpsOnly}`);
+  }
+
   if (pairs.length) currentPairIndex = pairs.length - 1;
   return true;
 }
 
+// ---------- UI updates ----------
 function updateCounter(){
   pairCounterEl.textContent = `Pair ${pairs.length ? (currentPairIndex+1) : 0} of ${pairs.length}`;
 }
 
 async function showPair(i){
-  if (i<0 || i>=pairs.length) return;
+  if (i < 0 || i >= pairs.length) return;
   const pair = pairs[i];
   await loadImage(pair.photo);
   showGPS(pair.gps);
@@ -84,19 +158,19 @@ async function showPair(i){
 }
 
 async function loadImage(info){
-  feedPlaceholder.style.display="flex";
-  feedImg.style.display="none";
-  return new Promise(res=>{
+  feedPlaceholder.style.display = "flex";
+  feedImg.style.display = "none";
+  return new Promise(res => {
     const img = new Image();
-    const url = info.url + "?" + Date.now(); // cache-bust
-    img.onload = ()=>{
+    const url = info.url + "?" + Date.now();
+    img.onload = () => {
       feedImg.src = url;
-      feedImg.style.display="block";
-      feedPlaceholder.style.display="none";
+      feedImg.style.display = "block";
+      feedPlaceholder.style.display = "none";
       filenameDisplayEl.textContent = info.name;
       res();
     };
-    img.onerror = ()=>{ feedPlaceholder.textContent="Error loading image"; res(); };
+    img.onerror = () => { feedPlaceholder.textContent = "Error loading image"; res(); };
     img.src = url;
   });
 }
@@ -104,11 +178,11 @@ async function loadImage(info){
 function showGPS(g){
   currentCoordEl.textContent = `${g.lat.toFixed(5)}, ${g.lon.toFixed(5)}`;
   currentTimeEl.textContent  = `timestamp: ${g.key}`;
-  map.setView([g.lat,g.lon], 15);
-  marker.setLatLng([g.lat,g.lon]);
+  map.setView([g.lat, g.lon], 15);
+  marker.setLatLng([g.lat, g.lon]);
 
   coordinatesListEl.innerHTML = "";
-  gpsData.forEach(r=>{
+  gpsData.forEach(r => {
     const el = document.createElement("div");
     el.textContent = `${r.lat.toFixed(5)}, ${r.lon.toFixed(5)} [${r.key}]`;
     if (r.key === g.key) el.classList.add("active-coordinate");
@@ -116,34 +190,28 @@ function showGPS(g){
   });
 }
 
-// --- controls ---
-document.getElementById("nextBtn").onclick = ()=>{ if(currentPairIndex < pairs.length-1){ currentPairIndex++; showPair(currentPairIndex);} };
-document.getElementById("prevBtn").onclick = ()=>{ if(currentPairIndex > 0){ currentPairIndex--; showPair(currentPairIndex);} };
+// ---------- controls ----------
+document.getElementById("nextBtn").onclick = () => { if (currentPairIndex < pairs.length - 1) { currentPairIndex++; showPair(currentPairIndex); } };
+document.getElementById("prevBtn").onclick = () => { if (currentPairIndex > 0) { currentPairIndex--; showPair(currentPairIndex); } };
 document.getElementById("refreshBtn").onclick = manualRefresh;
-
-window.addEventListener("keydown", e=>{
-  if(e.key==="ArrowRight") document.getElementById("nextBtn").click();
-  if(e.key==="ArrowLeft")  document.getElementById("prevBtn").click();
-  if(e.key.toLowerCase()==="r") document.getElementById("refreshBtn").click();
+window.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight") document.getElementById("nextBtn").click();
+  if (e.key === "ArrowLeft")  document.getElementById("prevBtn").click();
+  if (e.key.toLowerCase() === "r") document.getElementById("refreshBtn").click();
 });
 
-// --- refresh logic ---
+// ---------- refresh loop ----------
 async function rebuildAndShowLatest(){
   await loadGPS();
   const changed = await loadPhotosAndBuildPairs();
-  if (!pairs.length) { pairCounterEl.textContent = "Pair 0 of 0"; return; }
-  if (changed) await showPair(currentPairIndex); // show (new) latest
+  if (!pairs.length) { updateCounter(); return; }
+  if (changed) await showPair(currentPairIndex);
 }
-
 async function manualRefresh(){
-  photosFingerprint = ""; // force reload
-  gpsSha = "";
+  photosFingerprint = ""; gpsSha = "";
   await rebuildAndShowLatest();
 }
 
-// initial load
 window.addEventListener("DOMContentLoaded", rebuildAndShowLatest);
-
-// auto-poll for updates (30s keeps under anonymous API rate limits)
 setInterval(rebuildAndShowLatest, 30000);
 </script>
