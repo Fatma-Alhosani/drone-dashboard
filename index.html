@@ -1,11 +1,103 @@
+here you go — full drop-in HTML (auto-updates from your repo, pairs photos↔GPS by nearest timestamp, polls every 30s):
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Drone Dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+  <style>
+    :root{ --bg:#111; --card:#1e1e1e; --sub:#151515; --accent:#4CAF50; --muted:#aaa; --border:#333; }
+    body.light { --bg:#f5f5f5; --card:#fff; --sub:#f0f0f0; --accent:#0066cc; --muted:#555; --border:#ccc; color:#000; }
+    body{margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:var(--bg);color:#fff;transition:background .3s,color .3s;}
+    header{background:#000;padding:15px 30px;font-size:20px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;}
+    body.light header{background:#eee;color:#000;}
+    .header-status{font-size:14px;color:var(--accent);display:flex;align-items:center;gap:15px;}
+    .status-dot{width:10px;height:10px;background:var(--accent);border-radius:50%;}
+    .theme-toggle{cursor:pointer;padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:var(--sub);color:inherit;font-size:14px;}
+    .wrap{padding:28px;display:flex;justify-content:center;}
+    .violations{width:min(1200px,100%);background:var(--card);border-radius:14px;padding:18px;box-shadow:0 0 18px rgba(0,0,0,.35);}
+    .violations h2{margin:0 0 14px 0;font-size:22px;color:var(--accent);padding-bottom:10px;border-bottom:1px solid var(--border);}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+    @media (max-width:980px){.grid{grid-template-columns:1fr;}}
+    .pane{background:var(--sub);border:1px solid var(--border);border-radius:10px;padding:14px;min-height:360px;}
+    .pane h3{margin:0 0 10px 0;font-size:14px;text-transform:uppercase;color:#ddd;display:flex;justify-content:space-between;align-items:center;}
+    body.light .pane h3{color:#222;}
+    .tiny{font-size:12px;color:var(--muted);background:#2b2b2b;padding:4px 8px;border-radius:6px;}
+    body.light .tiny{background:#ddd;}
+    .feed-container{position:relative;width:100%;height:360px;border-radius:10px;overflow:hidden;background:#101010;}
+    body.light .feed-container{background:#e0e0e0;}
+    .feed-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#bbb;}
+    #feedImg{width:100%;height:100%;object-fit:contain;border-radius:10px;display:none;}
+    #map{height:260px;border-radius:10px;margin-top:6px;}
+    .coordinates-list{max-height:152px;overflow-y:auto;background:#1c1c1c;padding:8px;border-radius:8px;margin-top:10px;font-family:monospace;border:1px solid var(--border);}
+    body.light .coordinates-list{background:#fafafa;}
+    .coordinates-list div{padding:5px;border-bottom:1px solid #2f2f2f;}
+    .coordinates-list div:last-child{border-bottom:none;}
+    .active-coordinate{background:#272727;font-weight:bold;}
+    body.light .active-coordinate{background:#ddd;}
+    .controls{display:flex;align-items:center;justify-content:center;gap:10px;margin:16px 6px;}
+    .control-btn{background:#333;color:#fff;border:1px solid #444;padding:10px 18px;border-radius:8px;cursor:pointer;}
+    body.light .control-btn{background:#eee;color:#000;border:1px solid #bbb;}
+    .counter{font-size:13px;color:var(--muted);padding:6px 10px;background:#232323;border:1px solid #3a3a3a;border-radius:8px;}
+    body.light .counter{background:#f0f0f0;color:#555;border:1px solid #bbb;}
+  </style>
+</head>
+<body>
+<header>
+  <div>DRONE SURVEILLANCE DASHBOARD</div>
+  <div class="header-status">
+    <div class="status-dot"></div><span id="connectionStatus">OPERATIONAL</span>
+    <button class="theme-toggle" id="themeToggle">🌙 Dark</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <section class="violations">
+    <h2>Possible Violations</h2>
+    <div class="grid">
+      <div class="pane">
+        <h3>Images <span class="tiny" id="filenameDisplay">Loading…</span></h3>
+        <div class="feed-container"><div id="feedPlaceholder" class="feed-placeholder">Loading…</div><img id="feedImg" alt=""></div>
+      </div>
+      <div class="pane">
+        <h3>GPS Coordinates <span class="tiny">gps_log.csv</span></h3>
+        <div style="background:#8b1f1f;padding:10px;border-radius:8px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;font-weight:bold;">
+            <span>Current GPS Location</span><span id="currentCoord">--, --</span>
+          </div>
+          <div style="font-size:12px" id="currentTime">timestamp: --</div>
+        </div>
+        <div id="map"></div>
+        <h4 style="margin:12px 4px 6px">GPS Coordinates from File</h4>
+        <div class="coordinates-list" id="coordinatesList"></div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="control-btn" id="prevBtn">Previous</button>
+      <button class="control-btn" id="refreshBtn">Refresh</button>
+      <span class="counter" id="pairCounter">Pair 0 of 0</span>
+      <button class="control-btn" id="nextBtn">Next</button>
+    </div>
+  </section>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script>
-const githubRepo = "Fatma-Alhosani/drone-dashboard";
-const photosPath = "photos";
-const gpsFile    = "GPS/gps_log.csv";
+/* ====== CONFIG (edit if you change repo/paths) ====== */
+const githubRepo = "Fatma-Alhosani/drone-dashboard"; // owner/repo
+const photosPath = "photos";                          // folder with images
+const gpsFile    = "GPS/gps_log.csv";                 // CSV with timestamps,lat,lon
+const POLL_MS    = 30000;                             // how often to check for updates
+const MAX_DELTA_MS = 30 * 1000;                       // photo↔GPS pairing window
+/* =================================================== */
 
 let pairs = [], gpsData = [], currentPairIndex = 0;
 let photosFingerprint = "", gpsSha = "";
 
+// DOM
 const feedImg = document.getElementById("feedImg");
 const feedPlaceholder = document.getElementById("feedPlaceholder");
 const filenameDisplayEl = document.getElementById("filenameDisplay");
@@ -14,12 +106,13 @@ const currentCoordEl = document.getElementById("currentCoord");
 const currentTimeEl = document.getElementById("currentTime");
 const coordinatesListEl = document.getElementById("coordinatesList");
 
+// Map
 const map = L.map("map").setView([0,0], 2);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
   {attribution:"&copy; OpenStreetMap"}).addTo(map);
 const marker = L.marker([0,0]).addTo(map);
 
-// ---------- helpers ----------
+// ---- GitHub helpers ----
 async function ghGetJSON(path){
   const r = await fetch(`https://api.github.com/repos/${githubRepo}/${path}`);
   if (!r.ok) throw new Error(await r.text());
@@ -31,61 +124,25 @@ async function ghGetRaw(path){
   return r.text();
 }
 
-// Parse various timestamp formats to milliseconds (UTC).
+// ---- parsing / pairing ----
 function parseTsToMs(s){
   if (!s) return NaN;
   let m;
-  // 1) YYYY-MM-DD|HH-MM-SS   or   YYYY-MM-DD_HH-MM-SS
+  // 1) YYYY-MM-DD|HH-MM-SS or YYYY-MM-DD_HH-MM-SS
   m = s.match(/(\d{4}-\d{2}-\d{2})[|_](\d{2})-(\d{2})-(\d{2})/);
   if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
-  // 2) YYYY-MM-DD HH:MM:SS
+  // 2) YYYY-MM-DD HH:MM:SS (CSV)
   m = s.match(/(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
   if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
-  // 3) Bare photo basename like 2025-09-30|14-30-25 (no extension)
-  m = s.match(/(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})/); // tolerate separators
+  // 3) Looser: 2025-09-30|14-30-25 (or with colons)
+  m = s.match(/(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})/);
   if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
   return NaN;
 }
-
 function baseName(filename){
   const i = filename.lastIndexOf('.');
   return i > 0 ? filename.slice(0, i) : filename;
 }
-
-// ---------- load GPS ----------
-async function loadGPS(){
-  const meta = await ghGetJSON(`contents/${gpsFile}`);
-  if (meta.sha === gpsSha && gpsData.length) return; // no change
-  gpsSha = meta.sha;
-
-  const text = await ghGetRaw(gpsFile);
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (!lines.length) { gpsData = []; return; }
-
-  const header = lines[0].split(",");
-  const idxTime = header.findIndex(h => /time|timestamp/i.test(h));
-  const idxLat  = header.findIndex(h => /lat/i.test(h));
-  const idxLon  = header.findIndex(h => /lon|lng/i.test(h));
-
-  gpsData = lines.slice(1).map(r => {
-    const c = r.split(",");
-    const key = (c[idxTime] || "").trim();
-    const tsMs = parseTsToMs(key);
-    return {
-      key,
-      tsMs,
-      lat: parseFloat(c[idxLat]),
-      lon: parseFloat(c[idxLon])
-    };
-  }).filter(g => Number.isFinite(g.tsMs) && Number.isFinite(g.lat) && Number.isFinite(g.lon));
-
-  // Keep GPS sorted by time
-  gpsData.sort((a,b) => a.tsMs - b.tsMs);
-}
-
-// ---------- load photos & pair ----------
-const MAX_DELTA_MS = 30 * 1000; // 30 seconds window
-
 function findNearestGPS(tsMs){
   if (!gpsData.length || !Number.isFinite(tsMs)) return null;
   // binary search for closest
@@ -104,22 +161,44 @@ function findNearestGPS(tsMs){
   return bestDiff <= MAX_DELTA_MS ? best : null;
 }
 
+// ---- loading ----
+async function loadGPS(){
+  const meta = await ghGetJSON(`contents/${gpsFile}`);
+  if (meta.sha === gpsSha && gpsData.length) return;
+  gpsSha = meta.sha;
+
+  const text = await ghGetRaw(gpsFile);
+  const lines = text.split(/\r?\n/).filter(l=>l.trim());
+  if (!lines.length) { gpsData = []; return; }
+
+  const header = lines[0].split(",");
+  const idxTime = header.findIndex(h => /time|timestamp/i.test(h));
+  const idxLat  = header.findIndex(h => /lat/i.test(h));
+  const idxLon  = header.findIndex(h => /lon|lng/i.test(h));
+
+  gpsData = lines.slice(1).map(r => {
+    const c = r.split(",");
+    const key = (c[idxTime] || "").trim();
+    const tsMs = parseTsToMs(key);
+    return { key, tsMs, lat: parseFloat(c[idxLat]), lon: parseFloat(c[idxLon]) };
+  }).filter(g => Number.isFinite(g.tsMs) && Number.isFinite(g.lat) && Number.isFinite(g.lon));
+
+  gpsData.sort((a,b) => a.tsMs - b.tsMs);
+}
+
 async function loadPhotosAndBuildPairs(){
   const items = await ghGetJSON(`contents/${photosPath}`);
   const files = items.filter(i => i.type === "file" && /\.(jpe?g|png)$/i.test(i.name));
 
-  // fingerprint → if unchanged, skip rebuild
   const newFingerprint = files.map(f => f.sha).join(":");
   if (newFingerprint === photosFingerprint && pairs.length) return false;
   photosFingerprint = newFingerprint;
 
-  // Build photo objects with parsed timestamps
   const photos = files.map(f => {
     const tsMs = parseTsToMs(baseName(f.name));
     return { name: f.name, url: f.download_url, tsMs };
   });
 
-  // Pair each photo with nearest GPS within tolerance
   const newPairs = [];
   const unmatchedPhotos = [];
   photos.forEach(p => {
@@ -128,61 +207,52 @@ async function loadPhotosAndBuildPairs(){
     else unmatchedPhotos.push(p.name);
   });
 
-  // Sort by photo time/name
   newPairs.sort((a,b) => (a.photo.tsMs || 0) - (b.photo.tsMs || 0));
   pairs = newPairs;
 
   if (unmatchedPhotos.length) {
     console.warn(`Unmatched photos (${unmatchedPhotos.length}):`, unmatchedPhotos.slice(0,5), '…');
   }
-  const gpsOnly = gpsData.length - pairs.length;
-  if (gpsOnly > 0) {
-    console.info(`GPS entries without photo match (approx): ${gpsOnly}`);
-  }
-
   if (pairs.length) currentPairIndex = pairs.length - 1;
   return true;
 }
 
-// ---------- UI updates ----------
+// ---- UI ----
 function updateCounter(){
   pairCounterEl.textContent = `Pair ${pairs.length ? (currentPairIndex+1) : 0} of ${pairs.length}`;
 }
-
 async function showPair(i){
-  if (i < 0 || i >= pairs.length) return;
+  if (i<0 || i>=pairs.length) return;
   const pair = pairs[i];
   await loadImage(pair.photo);
   showGPS(pair.gps);
   updateCounter();
 }
-
 async function loadImage(info){
   feedPlaceholder.style.display = "flex";
   feedImg.style.display = "none";
-  return new Promise(res => {
+  return new Promise(res=>{
     const img = new Image();
     const url = info.url + "?" + Date.now();
-    img.onload = () => {
+    img.onload = ()=>{
       feedImg.src = url;
       feedImg.style.display = "block";
       feedPlaceholder.style.display = "none";
       filenameDisplayEl.textContent = info.name;
       res();
     };
-    img.onerror = () => { feedPlaceholder.textContent = "Error loading image"; res(); };
+    img.onerror = ()=>{ feedPlaceholder.textContent = "Error loading image"; res(); };
     img.src = url;
   });
 }
-
 function showGPS(g){
   currentCoordEl.textContent = `${g.lat.toFixed(5)}, ${g.lon.toFixed(5)}`;
   currentTimeEl.textContent  = `timestamp: ${g.key}`;
-  map.setView([g.lat, g.lon], 15);
-  marker.setLatLng([g.lat, g.lon]);
+  map.setView([g.lat,g.lon], 15);
+  marker.setLatLng([g.lat,g.lon]);
 
   coordinatesListEl.innerHTML = "";
-  gpsData.forEach(r => {
+  gpsData.forEach(r=>{
     const el = document.createElement("div");
     el.textContent = `${r.lat.toFixed(5)}, ${r.lon.toFixed(5)} [${r.key}]`;
     if (r.key === g.key) el.classList.add("active-coordinate");
@@ -190,21 +260,27 @@ function showGPS(g){
   });
 }
 
-// ---------- controls ----------
-document.getElementById("nextBtn").onclick = () => { if (currentPairIndex < pairs.length - 1) { currentPairIndex++; showPair(currentPairIndex); } };
-document.getElementById("prevBtn").onclick = () => { if (currentPairIndex > 0) { currentPairIndex--; showPair(currentPairIndex); } };
+// ---- controls ----
+document.getElementById("nextBtn").onclick = ()=>{ if(currentPairIndex < pairs.length-1){ currentPairIndex++; showPair(currentPairIndex);} };
+document.getElementById("prevBtn").onclick = ()=>{ if(currentPairIndex > 0){ currentPairIndex--; showPair(currentPairIndex);} };
 document.getElementById("refreshBtn").onclick = manualRefresh;
-window.addEventListener("keydown", e => {
-  if (e.key === "ArrowRight") document.getElementById("nextBtn").click();
-  if (e.key === "ArrowLeft")  document.getElementById("prevBtn").click();
-  if (e.key.toLowerCase() === "r") document.getElementById("refreshBtn").click();
+window.addEventListener("keydown",e=>{
+  if(e.key==="ArrowRight") document.getElementById("nextBtn").click();
+  if(e.key==="ArrowLeft")  document.getElementById("prevBtn").click();
+  if(e.key.toLowerCase()==="r") document.getElementById("refreshBtn").click();
 });
 
-// ---------- refresh loop ----------
+// ---- theme toggle ----
+const themeToggle=document.getElementById("themeToggle");
+function setTheme(light){document.body.classList.toggle("light",light);themeToggle.textContent=light?"☀️ Light":"🌙 Dark";localStorage.setItem("theme",light?"light":"dark");}
+themeToggle.onclick=()=>setTheme(!document.body.classList.contains("light"));
+if(localStorage.getItem("theme")==="light")setTheme(true);
+
+// ---- refresh loop ----
 async function rebuildAndShowLatest(){
   await loadGPS();
   const changed = await loadPhotosAndBuildPairs();
-  if (!pairs.length) { updateCounter(); return; }
+  if (!pairs.length){ updateCounter(); return; }
   if (changed) await showPair(currentPairIndex);
 }
 async function manualRefresh(){
@@ -213,5 +289,10 @@ async function manualRefresh(){
 }
 
 window.addEventListener("DOMContentLoaded", rebuildAndShowLatest);
-setInterval(rebuildAndShowLatest, 30000);
+setInterval(rebuildAndShowLatest, POLL_MS);
 </script>
+</body>
+</html>
+```
+
+If you later standardize your filenames/timestamps, we can switch from “nearest timestamp” pairing to strict name matching.
