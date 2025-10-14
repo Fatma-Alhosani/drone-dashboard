@@ -6,89 +6,29 @@
   <title>Drone Dashboard</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
   <style>
-    :root{
-      --bg:#111; --card:#1e1e1e; --sub:#151515;
-      --accent:#4CAF50; --muted:#aaa; --border:#333;
-    }
-    body.light {
-      --bg:#f5f5f5; --card:#fff; --sub:#f0f0f0;
-      --accent:#0066cc; --muted:#555; --border:#ccc; color:#000;
-    }
-
-    body{
-      margin:0;
-      font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
-      background:var(--bg);
-      color:#fff;
-      transition:background .3s,color .3s;
-    }
-
-    header{
-      background:#000;
-      padding:15px 30px;
-      font-size:20px;
-      font-weight:bold;
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-    }
+    :root{ --bg:#111; --card:#1e1e1e; --sub:#151515; --accent:#4CAF50; --muted:#aaa; --border:#333; }
+    body.light { --bg:#f5f5f5; --card:#fff; --sub:#f0f0f0; --accent:#0066cc; --muted:#555; --border:#ccc; color:#000; }
+    body{margin:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:var(--bg);color:#fff;transition:background .3s,color .3s;}
+    header{background:#000;padding:15px 30px;font-size:20px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;}
     body.light header{background:#eee;color:#000;}
-
     .header-status{font-size:14px;color:var(--accent);display:flex;align-items:center;gap:15px;}
     .status-dot{width:10px;height:10px;background:var(--accent);border-radius:50%;}
     .theme-toggle{cursor:pointer;padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:var(--sub);color:inherit;font-size:14px;}
-
-    .wrap{
-      padding:32px;
-      display:flex;
-      justify-content:center;
-    }
-
-    /* 🟢 Make Violations box fill 70% of the viewport width */
-    .violations{
-      width:70vw;
-      background:var(--card);
-      border-radius:14px;
-      padding:24px;
-      box-shadow:0 0 18px rgba(0,0,0,.35);
-      transition:width .3s ease;
-    }
-    .violations h2{
-      margin:0 0 18px 0;
-      font-size:26px;
-      color:var(--accent);
-      padding-bottom:10px;
-      border-bottom:1px solid var(--border);
-      text-align:left;
-    }
-
-    .grid{
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:24px;
-    }
+    .wrap{padding:32px;display:flex;justify-content:center;}
+    /* ✅ 70% width */
+    .violations{width:70vw;background:var(--card);border-radius:14px;padding:24px;box-shadow:0 0 18px rgba(0,0,0,.35);}
+    .violations h2{margin:0 0 18px 0;font-size:26px;color:var(--accent);padding-bottom:10px;border-bottom:1px solid var(--border);}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;}
     @media (max-width:980px){.grid{grid-template-columns:1fr;} .violations{width:90vw;}}
-
-    .pane{
-      background:var(--sub);
-      border:1px solid var(--border);
-      border-radius:10px;
-      padding:16px;
-      min-height:520px;
-    }
+    .pane{background:var(--sub);border:1px solid var(--border);border-radius:10px;padding:16px;min-height:520px;}
     .pane h3{margin:0 0 10px 0;font-size:15px;text-transform:uppercase;color:#ddd;display:flex;justify-content:space-between;align-items:center;}
     body.light .pane h3{color:#222;}
     .tiny{font-size:12px;color:var(--muted);background:#2b2b2b;padding:4px 8px;border-radius:6px;}
     body.light .tiny{background:#ddd;}
-
-    .feed-container{
-      position:relative;width:100%;height:clamp(400px,45vh,640px);
-      border-radius:10px;overflow:hidden;background:#101010;
-    }
+    .feed-container{position:relative;width:100%;height:clamp(400px,45vh,640px);border-radius:10px;overflow:hidden;background:#101010;}
     body.light .feed-container{background:#e0e0e0;}
     .feed-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#bbb;}
     #feedImg{width:100%;height:100%;object-fit:contain;border-radius:10px;display:none;}
-
     #map{height:clamp(320px,40vh,560px);border-radius:10px;margin-top:6px;}
     .coordinates-list{max-height:clamp(160px,22vh,320px);overflow-y:auto;background:#1c1c1c;padding:8px;border-radius:8px;margin-top:10px;font-family:monospace;border:1px solid var(--border);}
     body.light .coordinates-list{background:#fafafa;}
@@ -96,14 +36,14 @@
     .coordinates-list div:last-child{border-bottom:none;}
     .active-coordinate{background:#272727;font-weight:bold;}
     body.light .active-coordinate{background:#ddd;}
-
     .controls{display:flex;align-items:center;justify-content:center;gap:10px;margin:18px 6px;}
     .control-btn{background:#333;color:#fff;border:1px solid #444;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:15px;}
     body.light .control-btn{background:#eee;color:#000;border:1px solid #bbb;}
     .counter{font-size:14px;color:var(--muted);padding:6px 10px;background:#232323;border:1px solid #3a3a3a;border-radius:8px;}
     body.light .counter{background:#f0f0f0;color:#555;border:1px solid #bbb;}
-
     .meta-row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;}
+    /* diagnostics line */
+    #diag{margin-top:6px;font-size:12px;color:#9aa;opacity:.9}
   </style>
 </head>
 <body>
@@ -141,3 +81,272 @@
       </div>
     </div>
     <div class="controls">
+      <button class="control-btn" id="prevBtn">Previous</button>
+      <button class="control-btn" id="refreshBtn">Refresh</button>
+      <span class="counter" id="pairCounter">Pair 0 of 0</span>
+      <button class="control-btn" id="nextBtn">Next</button>
+    </div>
+    <div id="diag"></div>
+  </section>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script>
+/* ====== CONFIG ====== */
+const githubRepo   = "Fatma-Alhosani/drone-dashboard"; // owner/repo
+const photosPath   = "photos";                          // images folder
+const gpsFolder    = "GPS";                             // txt folder
+const POLL_MS      = 30000;
+const MAX_DELTA_MS = 60 * 1000;                         // 60s window
+/* ==================== */
+
+let pairs = [], gpsData = [], currentPairIndex = 0;
+let photosFingerprint = "", gpsFingerprint = "";
+const gpsCache = new Map();
+
+/* ---------- DOM ---------- */
+const feedImg = document.getElementById("feedImg");
+const feedPlaceholder = document.getElementById("feedPlaceholder");
+const filenameDisplayEl = document.getElementById("filenameDisplay");
+const pairCounterEl = document.getElementById("pairCounter");
+const currentCoordEl = document.getElementById("currentCoord");
+const currentTimeEl = document.getElementById("currentTime");
+const coordinatesListEl = document.getElementById("coordinatesList");
+const photoDateEl = document.getElementById("photoDate");
+const photoTimeEl = document.getElementById("photoTime");
+const diagEl = document.getElementById("diag");
+
+/* ---------- Map ---------- */
+const map = L.map("map").setView([0,0], 2);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  {attribution:"&copy; OpenStreetMap"}).addTo(map);
+const marker = L.marker([0,0]).addTo(map);
+
+/* ---------- GitHub helpers ---------- */
+async function ghJSON(path){
+  const r = await fetch(`https://api.github.com/repos/${githubRepo}/${path}`);
+  if (!r.ok) throw new Error(`GitHub API error: ${r.status} ${await r.text()}`);
+  return r.json();
+}
+async function ghRaw(path){
+  const r = await fetch(`https://raw.githubusercontent.com/${githubRepo}/main/${path}?ts=${Date.now()}`);
+  if (!r.ok) throw new Error(`Raw fetch error: ${r.status} ${await r.text()}`);
+  return r.text();
+}
+
+/* ---------- parsing helpers ---------- */
+function baseName(filename){ const i = filename.lastIndexOf('.'); return i>0 ? filename.slice(0,i) : filename; }
+
+/* Accept many timestamp formats (robust): */
+function parseTsToMs(s){
+  if (!s) return NaN;
+  let m;
+  // 1) yyyy-mm-dd_[hh]-[mm]-[ss]  or  yyyy-mm-dd|hh-mm-ss
+  m = s.match(/^(\d{4}-\d{2}-\d{2})[|_](\d{2})-(\d{2})-(\d{2})$/);
+  if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
+  // 2) yyyy-mm-dd hh:mm:ss
+  m = s.match(/^(\d{4}-\d{2}-\d{2})[ ](\d{2}):(\d{2}):(\d{2})$/);
+  if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
+  // 3) yyyy-mm-dd hh-mm-ss (space + dashes)
+  m = s.match(/^(\d{4}-\d{2}-\d{2})[ ](\d{2})-(\d{2})-(\d{2})$/);
+  if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
+  // 4) fallback: yyyy-mm-ddXhh[:|-]mm[:|-]ss with any single separator X
+  m = s.match(/^(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})$/);
+  if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
+  return NaN;
+}
+
+/* Extract strings for UI labels */
+function extractDateTimeParts(key) {
+  const m = key.match(/^(\d{4}-\d{2}-\d{2})[|_ ](\d{2})[-:](\d{2})[-:](\d{2})$/);
+  if (!m) return { dateStr: "--", timeStr: "--" };
+  return { dateStr: m[1], timeStr: `${m[2]}:${m[3]}:${m[4]}` };
+}
+
+/* Parse coordinates from txt content. */
+function parseCoordsFromText(text){
+  let m = text.match(/lat\D*(-?\d+(?:\.\d+)?)\D*lon\D*(-?\d+(?:\.\d+)?)/i);
+  if (!m) m = text.match(/(-?\d+(?:\.\d+)?)\D*,\D*(-?\d+(?:\.\d+)?)/); // "lat,lon"
+  if (!m) {
+    const all = [...text.matchAll(/-?\d+(?:\.\d+)?/g)].map(x => parseFloat(x[0]));
+    if (all.length >= 2) m = [null, all[0], all[1]];
+  }
+  if (!m) return null;
+  const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return { lat, lon };
+}
+
+/* ---------- load GPS (TXT) ---------- */
+async function loadGpsFromTxt(){
+  const list = await ghJSON(`contents/${gpsFolder}`);
+  const txtFiles = list.filter(i => i.type === "file" && /\.txt$/i.test(i.name));
+
+  const newGpsFingerprint = txtFiles.map(f => `${f.name}:${f.sha}`).join("|");
+  if (newGpsFingerprint === gpsFingerprint && gpsData.length) return false;
+  gpsFingerprint = newGpsFingerprint;
+
+  for (const f of txtFiles) {
+    const path = `${gpsFolder}/${f.name}`;
+    const cached = gpsCache.get(path);
+    if (cached && cached.sha === f.sha) continue;
+
+    let entry = null;
+    try {
+      const text = await ghRaw(path);
+      const coords = parseCoordsFromText(text);
+      if (coords) {
+        const key = baseName(f.name);
+        const tsMs = parseTsToMs(key);
+        if (Number.isFinite(tsMs)) entry = { key, tsMs, lat: coords.lat, lon: coords.lon, path };
+      }
+    } catch (e) {
+      console.warn("GPS read failed:", f.name, e);
+    }
+    gpsCache.set(path, { sha: f.sha, entry });
+  }
+
+  gpsData = [];
+  for (const { entry } of gpsCache.values()) if (entry) gpsData.push(entry);
+  gpsData.sort((a,b) => a.tsMs - b.tsMs);
+  return true;
+}
+
+/* ---------- load photos ---------- */
+async function loadPhotos(){
+  const items = await ghJSON(`contents/${photosPath}`);
+  const files = items.filter(i => i.type === "file" && /\.(jpe?g|png)$/i.test(i.name));
+  const newFp = files.map(f => f.sha).join(":");
+  if (newFp === photosFingerprint && pairs.length) return null;
+  photosFingerprint = newFp;
+
+  const photos = files.map(f => {
+    const key = baseName(f.name);
+    const tsMs = parseTsToMs(key);
+    return { name: f.name, key, url: f.download_url, tsMs };
+  }).filter(p => Number.isFinite(p.tsMs));
+
+  photos.sort((a,b) => a.tsMs - b.tsMs);
+  return photos;
+}
+
+/* ---------- pairing (exact-name first, then nearest) ---------- */
+function buildPairsGpsDriven(photos){
+  if (!gpsData.length || !photos?.length) { pairs = []; return; }
+
+  const photosByKey = new Map(photos.map((p,i)=>[p.key, {p, i}]));
+  const used = new Array(photos.length).fill(false);
+  const out = [];
+
+  for (const g of gpsData) {
+    // exact key match
+    const exact = photosByKey.get(g.key);
+    if (exact && !used[exact.i]) {
+      used[exact.i] = true;
+      out.push({ gps:g, photo: exact.p });
+      continue;
+    }
+    // fallback: nearest in time
+    let best=-1, diff=Infinity;
+    for (let i=0;i<photos.length;i++){
+      if (used[i]) continue;
+      const d = Math.abs(photos[i].tsMs - g.tsMs);
+      if (d < diff){ diff = d; best = i; }
+    }
+    if (best>=0 && diff<=MAX_DELTA_MS) { used[best]=true; out.push({ gps:g, photo:photos[best] }); }
+  }
+
+  pairs = out;
+  if (pairs.length) currentPairIndex = Math.min(currentPairIndex, pairs.length-1);
+}
+
+/* ---------- UI helpers ---------- */
+function updateCounter(){ pairCounterEl.textContent = `Pair ${pairs.length ? (currentPairIndex+1) : 0} of ${pairs.length}`; }
+
+async function showPair(i){
+  if (i<0 || i>=pairs.length) return;
+  const pair = pairs[i];
+  if (!pair.photo){
+    feedImg.style.display="none"; feedPlaceholder.style.display="flex";
+    filenameDisplayEl.textContent="(no photo)"; photoDateEl.textContent="--"; photoTimeEl.textContent="--";
+  } else {
+    await loadImage(pair.photo);
+  }
+  showGPS(pair.gps);
+  updateCounter();
+}
+
+async function loadImage(info){
+  feedPlaceholder.style.display="flex"; feedImg.style.display="none";
+  return new Promise(res=>{
+    const img = new Image();
+    const url = info.url + "?" + Date.now(); // cache-bust
+    img.onload=()=>{ 
+      feedImg.src=url; feedImg.style.display="block"; feedPlaceholder.style.display="none"; filenameDisplayEl.textContent = info.name;
+      const { dateStr, timeStr } = extractDateTimeParts(info.key || baseName(info.name));
+      photoDateEl.textContent = dateStr; photoTimeEl.textContent = timeStr;
+      res();
+    };
+    img.onerror=()=>{ feedPlaceholder.textContent="Error loading image"; res(); };
+    img.src = url;
+  });
+}
+
+function showGPS(g){
+  currentCoordEl.textContent = `${g.lat.toFixed(5)}, ${g.lon.toFixed(5)}`;
+  currentTimeEl.textContent  = `timestamp: ${g.key}`;
+  map.setView([g.lat,g.lon], 15); marker.setLatLng([g.lat,g.lon]);
+
+  coordinatesListEl.innerHTML = "";
+  gpsData.forEach(r=>{
+    const el = document.createElement("div");
+    el.textContent = `${r.lat.toFixed(5)}, ${r.lon.toFixed(5)} [${r.key}]`;
+    if (r.key === g.key) el.classList.add("active-coordinate");
+    coordinatesListEl.appendChild(el);
+  });
+}
+
+/* ---------- controls ---------- */
+document.getElementById("nextBtn").onclick = ()=>{ if(currentPairIndex<pairs.length-1){ currentPairIndex++; showPair(currentPairIndex);} };
+document.getElementById("prevBtn").onclick = ()=>{ if(currentPairIndex>0){ currentPairIndex--; showPair(currentPairIndex);} };
+document.getElementById("refreshBtn").onclick = manualRefresh;
+window.addEventListener("keydown",e=>{
+  if(e.key==="ArrowRight") document.getElementById("nextBtn").click();
+  if(e.key==="ArrowLeft")  document.getElementById("prevBtn").click();
+  if(e.key.toLowerCase()==="r") document.getElementById("refreshBtn").click();
+});
+
+// theme toggle
+const themeToggle=document.getElementById("themeToggle");
+function setTheme(light){document.body.classList.toggle("light",light);themeToggle.textContent=light?"☀️ Light":"🌙 Dark";localStorage.setItem("theme",light?"light":"dark");}
+themeToggle.onclick=()=>setTheme(!document.body.classList.contains("light"));
+if(localStorage.getItem("theme")==="light")setTheme(true);
+
+/* ---------- refresh loop ---------- */
+async function reloadGpsDriven(){
+  try{
+    await loadGpsFromTxt();
+    const photos = await loadPhotos();
+    if (!photos && pairs.length) return false; // nothing changed
+    buildPairsGpsDriven(photos || []);
+    diagEl.textContent = `diag: photos=${photos?photos.length:"(cached)"} gps=${gpsData.length} pairs=${pairs.length}`;
+    return true;
+  } catch (e) {
+    diagEl.textContent = `diag error: ${e.message}`;
+    console.error(e);
+    return false;
+  }
+}
+async function rebuildAndShowLatest(){
+  const changed = await reloadGpsDriven();
+  if (!pairs.length){ updateCounter(); feedImg.style.display="none"; feedPlaceholder.style.display="flex"; return; }
+  if (changed) await showPair(currentPairIndex);
+}
+async function manualRefresh(){ photosFingerprint=""; gpsFingerprint=""; await rebuildAndShowLatest(); }
+
+window.addEventListener("DOMContentLoaded", rebuildAndShowLatest);
+setInterval(rebuildAndShowLatest, POLL_MS);
+</script>
+</body>
+</html>
