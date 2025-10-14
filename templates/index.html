@@ -31,7 +31,8 @@
     #map{height:clamp(320px,40vh,560px);border-radius:10px;margin-top:6px}
     .coordinates-list{max-height:clamp(160px,22vh,320px);overflow-y:auto;background:#1c1c1c;padding:8px;border-radius:8px;margin-top:10px;font-family:monospace;border:1px solid var(--border)}
     body.light .coordinates-list{background:#fafafa}
-    .coordinates-list div{padding:5px;border-bottom:1px solid #2f2f2f}
+    .coordinates-list div{padding:7px 6px;border-bottom:1px solid #2f2f2f;cursor:pointer}
+    .coordinates-list div:hover{background:#2a2a2a}
     .coordinates-list div:last-child{border-bottom:none}
     .active-coordinate{background:#272727;font-weight:bold}
     body.light .active-coordinate{background:#ddd}
@@ -83,9 +84,9 @@
       <span class="counter" id="pairCounter">Pair 0 of 0</span>
       <button class="control-btn" id="nextBtn">Next</button>
 
-      <button class="control-btn" id="discardToTrashBtn" title="Move to trash/ in repo">Trash</button>
+      <!-- Removed Trash button per request -->
       <button class="control-btn" id="discardDeleteBtn" title="Delete from repo">Delete</button>
-      <span class="tiny">These modify the GitHub repo</span>
+      <span class="tiny">This permanently deletes from GitHub</span>
     </div>
 
     <div id="diag"></div>
@@ -216,14 +217,28 @@ async function loadImage(info){
   });
 }
 function showGPS(g){
-  currentCoordEl.textContent = `${g.lat.toFixed(5)}, ${g.lon.toFixed(5)}`;
+  const latLabel = g.lat_str ?? String(g.lat);
+  const lonLabel = g.lon_str ?? String(g.lon);
+  currentCoordEl.textContent = `${latLabel}, ${lonLabel}`; // full precision display
   currentTimeEl.textContent  = `timestamp: ${g.key}`;
-  map.setView([g.lat,g.lon], 15); marker.setLatLng([g.lat,g.lon]);
+
+  map.setView([g.lat,g.lon], 15);
+  marker.setLatLng([g.lat,g.lon]);
+
+  // render clickable list
   coordinatesListEl.innerHTML = "";
-  gpsData.forEach(r=>{
+  gpsData.forEach((r, idx)=>{
     const el = document.createElement("div");
-    el.textContent = `${r.lat.toFixed(5)}, ${r.lon.toFixed(5)} [${r.key}]`;
+    const la = r.lat_str ?? String(r.lat);
+    const lo = r.lon_str ?? String(r.lon);
+    el.textContent = `${la}, ${lo} [${r.key}]`;
+    el.dataset.key = r.key;
     if (r.key === g.key) el.classList.add("active-coordinate");
+    el.addEventListener("click", () => {
+      // jump to this gps's pair
+      const pIndex = pairs.findIndex(p => p.gps.key === r.key);
+      if (pIndex >= 0) { currentPairIndex = pIndex; showPair(currentPairIndex); }
+    });
     coordinatesListEl.appendChild(el);
   });
 }
@@ -232,14 +247,86 @@ function showGPS(g){
 document.getElementById("nextBtn").onclick = ()=>{ if(currentPairIndex<pairs.length-1){ currentPairIndex++; showPair(currentPairIndex);} };
 document.getElementById("prevBtn").onclick = ()=>{ if(currentPairIndex>0){ currentPairIndex--; showPair(currentPairIndex);} };
 document.getElementById("refreshBtn").onclick = manualRefresh;
+
 window.addEventListener("keydown",e=>{
   if(e.key==="ArrowRight") document.getElementById("nextBtn").click();
   if(e.key==="ArrowLeft")  document.getElementById("prevBtn").click();
   if(e.key.toLowerCase()==="r") document.getElementById("refreshBtn").click();
 });
+
 const themeToggle=document.getElementById("themeToggle");
 function setTheme(light){document.body.classList.toggle("light",light);themeToggle.textContent=light?"☀️ Light":"🌙 Dark";localStorage.setItem("theme",light?"light":"dark");}
 themeToggle.onclick=()=>setTheme(!document.body.classList.contains("light"));
 if(localStorage.getItem("theme")==="light")setTheme(true);
 
-/* ---------- refresh loop ---*
+/* ---------- refresh loop (force-capable) ---------- */
+async function reloadGpsDriven(force = false){
+  try{
+    const gpsChanged = await loadGpsFromTxt();
+    const photos = await loadPhotos();
+    const photosChanged = !!photos;
+
+    if (force || gpsChanged || photosChanged) {
+      buildPairsGpsDriven(photos || []);
+      currentPairIndex = Math.max(0, pairs.length - 1); // newest on refresh
+      diagEl.textContent = `diag: refreshed photos=${photos?photos.length:"(cached)"} gps=${gpsData.length} pairs=${pairs.length}`;
+      return true;
+    }
+    diagEl.textContent = `diag: no new data (cached) gps=${gpsData.length} pairs=${pairs.length}`;
+    return false;
+  } catch (e) {
+    diagEl.textContent = `diag error: ${e.message}`;
+    console.error(e);
+    return false;
+  }
+}
+
+async function rebuildAndShowLatest(force=false){
+  await reloadGpsDriven(force);
+  if (!pairs.length){
+    updateCounter();
+    feedImg.style.display="none";
+    feedPlaceholder.style.display="flex";
+    feedPlaceholder.textContent = "No data available";
+    return;
+  }
+  await showPair(currentPairIndex);
+}
+
+async function manualRefresh(){
+  diagEl.textContent = "diag: refreshing...";
+  photosFingerprint = "";
+  gpsFingerprint = "";
+  await rebuildAndShowLatest(true); // force full reload
+}
+
+/* ---------- Delete (calls Flask) ---------- */
+async function discardOnServer(repoPath){
+  const url = `${DISCARD_API_BASE}/discard?path=${encodeURIComponent(repoPath)}&mode=delete`;
+  const r = await fetch(url, { method: "POST" });
+  if (!r.ok) throw new Error(`Delete failed: ${await r.text()}`);
+  return r.json();
+}
+function currentPhotoPath(){
+  if (!pairs.length) return null;
+  const pair = pairs[currentPairIndex];
+  return pair?.photo?.name ? `photos/${pair.photo.name}` : null;
+}
+document.getElementById("discardDeleteBtn").onclick = async () => {
+  const path = currentPhotoPath(); if (!path){ diagEl.textContent="diag: no photo to delete"; return; }
+  if (!confirm("Delete this image from the repository? This cannot be undone.")) return;
+  try {
+    await discardOnServer(path);
+    await manualRefresh();
+    if (currentPairIndex >= pairs.length) currentPairIndex = Math.max(0, pairs.length-1);
+    if (pairs.length) await showPair(currentPairIndex);
+    diagEl.textContent = `diag: deleted ${path}`;
+  } catch(e){ alert(e.message); diagEl.textContent = `diag error: ${e.message}`; }
+};
+
+/* ---------- boot ---------- */
+window.addEventListener("DOMContentLoaded", () => rebuildAndShowLatest(true));
+setInterval(rebuildAndShowLatest, POLL_MS);
+</script>
+</body>
+</html>
