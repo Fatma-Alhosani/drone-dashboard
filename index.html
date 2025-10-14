@@ -99,7 +99,13 @@ const githubRepo   = "Fatma-Alhosani/drone-dashboard"; // owner/repo
 const photosPath   = "photos";
 const gpsFolder    = "GPS";
 const POLL_MS      = 30000;
-const MAX_DELTA_MS = 60 * 1000; // 60s
+const MAX_DELTA_MS = 60 * 1000; // 60s window
+
+// API base: default to same-origin (works when served by Flask).
+// Optional override via URL:  index.html?api=http://<ip>:8080
+const urlApiOverride = new URLSearchParams(location.search).get("api");
+const DISCARD_API_BASE = urlApiOverride || window.location.origin;
+/* ==================== */
 
 let pairs = [], gpsData = [], currentPairIndex = 0;
 let photosFingerprint = "", gpsFingerprint = "";
@@ -168,6 +174,7 @@ function parseCoordsFromText(text){
 async function loadGpsFromTxt(){
   const list = await ghJSON(`contents/${gpsFolder}`);
   const txtFiles = list.filter(i => i.type === "file" && /\.txt$/i.test(i.name));
+
   const newGpsFingerprint = txtFiles.map(f => `${f.name}:${f.sha}`).join("|");
   if (newGpsFingerprint === gpsFingerprint && gpsData.length) return false;
   gpsFingerprint = newGpsFingerprint;
@@ -176,6 +183,7 @@ async function loadGpsFromTxt(){
     const path = `${gpsFolder}/${f.name}`;
     const cached = gpsCache.get(path);
     if (cached && cached.sha === f.sha) continue;
+
     let entry = null;
     try {
       const text = await ghRaw(path);
@@ -305,21 +313,23 @@ async function rebuildAndShowLatest(){
 }
 async function manualRefresh(){ photosFingerprint=""; gpsFingerprint=""; await rebuildAndShowLatest(); }
 
-/* ---------- Discard (same-origin to Flask) ---------- */
+/* ---------- Discard (calls Flask) ---------- */
 async function discardOnServer(repoPath, mode="trash"){
-  const r = await fetch(`/discard?path=${encodeURIComponent(repoPath)}&mode=${encodeURIComponent(mode)}`, { method: "POST" });
+  const url = `${DISCARD_API_BASE}/discard?path=${encodeURIComponent(repoPath)}&mode=${encodeURIComponent(mode)}`;
+  const r = await fetch(url, { method: "POST" }); // POST for broad compatibility
   if (!r.ok) throw new Error(`Discard failed: ${await r.text()}`);
   return r.json();
 }
 function currentPhotoPath(){
   if (!pairs.length) return null;
   const pair = pairs[currentPairIndex];
-  if (!pair || !pair.photo) return null;
-  return `photos/${pair.photo.name}`;
+  return pair?.photo?.name ? `photos/${pair.photo.name}` : null;
 }
 document.getElementById("discardToTrashBtn").onclick = async () => {
   const path = currentPhotoPath(); if (!path){ diagEl.textContent="diag: no photo to trash"; return; }
-  try { await discardOnServer(path, "trash"); await manualRefresh();
+  try {
+    await discardOnServer(path, "trash");
+    await manualRefresh();
     if (currentPairIndex >= pairs.length) currentPairIndex = Math.max(0, pairs.length-1);
     if (pairs.length) await showPair(currentPairIndex);
     diagEl.textContent = `diag: moved to trash ${path}`;
@@ -328,7 +338,9 @@ document.getElementById("discardToTrashBtn").onclick = async () => {
 document.getElementById("discardDeleteBtn").onclick = async () => {
   const path = currentPhotoPath(); if (!path){ diagEl.textContent="diag: no photo to delete"; return; }
   if (!confirm("Delete this image from the repository? This cannot be undone.")) return;
-  try { await discardOnServer(path, "delete"); await manualRefresh();
+  try {
+    await discardOnServer(path, "delete");
+    await manualRefresh();
     if (currentPairIndex >= pairs.length) currentPairIndex = Math.max(0, pairs.length-1);
     if (pairs.length) await showPair(currentPairIndex);
     diagEl.textContent = `diag: deleted ${path}`;
