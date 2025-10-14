@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Drone Dashboard</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <style>
     :root{ --bg:#111; --card:#1e1e1e; --sub:#151515; --accent:#4CAF50; --muted:#aaa; --border:#333; }
     body.light { --bg:#f5f5f5; --card:#fff; --sub:#f0f0f0; --accent:#0066cc; --muted:#555; --border:#ccc; color:#000; }
@@ -15,7 +15,6 @@
     .status-dot{width:10px;height:10px;background:var(--accent);border-radius:50%;}
     .theme-toggle{cursor:pointer;padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:var(--sub);color:inherit;font-size:14px;}
     .wrap{padding:32px;display:flex;justify-content:center;}
-    /* ✅ 70% width */
     .violations{width:70vw;background:var(--card);border-radius:14px;padding:24px;box-shadow:0 0 18px rgba(0,0,0,.35);}
     .violations h2{margin:0 0 18px 0;font-size:26px;color:var(--accent);padding-bottom:10px;border-bottom:1px solid var(--border);}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;}
@@ -36,13 +35,12 @@
     .coordinates-list div:last-child{border-bottom:none;}
     .active-coordinate{background:#272727;font-weight:bold;}
     body.light .active-coordinate{background:#ddd;}
-    .controls{display:flex;align-items:center;justify-content:center;gap:10px;margin:18px 6px;}
+    .controls{display:flex;align-items:center;justify-content:center;gap:10px;margin:18px 6px;flex-wrap:wrap;}
     .control-btn{background:#333;color:#fff;border:1px solid #444;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:15px;}
     body.light .control-btn{background:#eee;color:#000;border:1px solid #bbb;}
     .counter{font-size:14px;color:var(--muted);padding:6px 10px;background:#232323;border:1px solid #3a3a3a;border-radius:8px;}
     body.light .counter{background:#f0f0f0;color:#555;border:1px solid #bbb;}
     .meta-row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;}
-    /* diagnostics line */
     #diag{margin-top:6px;font-size:12px;color:#9aa;opacity:.9}
   </style>
 </head>
@@ -80,24 +78,34 @@
         <div class="coordinates-list" id="coordinatesList"></div>
       </div>
     </div>
+
     <div class="controls">
       <button class="control-btn" id="prevBtn">Previous</button>
       <button class="control-btn" id="refreshBtn">Refresh</button>
       <span class="counter" id="pairCounter">Pair 0 of 0</span>
       <button class="control-btn" id="nextBtn">Next</button>
+
+      <!-- New: repo-changing actions -->
+      <button class="control-btn" id="discardToTrashBtn" title="Move to trash/ in repo">Trash</button>
+      <button class="control-btn" id="discardDeleteBtn" title="Delete from repo">Delete</button>
+      <span class="tiny">These modify the GitHub repo</span>
     </div>
+
     <div id="diag"></div>
   </section>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 /* ====== CONFIG ====== */
 const githubRepo   = "Fatma-Alhosani/drone-dashboard"; // owner/repo
-const photosPath   = "photos";                          // images folder
-const gpsFolder    = "GPS";                             // txt folder
+const photosPath   = "photos";
+const gpsFolder    = "GPS";
 const POLL_MS      = 30000;
-const MAX_DELTA_MS = 60 * 1000;                         // 60s window
+const MAX_DELTA_MS = 60 * 1000; // 60s window
+
+// If your Flask server is same-origin, keep "". If different host/port, set base URL:
+const DISCARD_API_BASE = ""; // e.g., "http://192.168.1.50:8080" then fetch(`${DISCARD_API_BASE}/discard?...`)
 /* ==================== */
 
 let pairs = [], gpsData = [], currentPairIndex = 0;
@@ -137,36 +145,29 @@ async function ghRaw(path){
 /* ---------- parsing helpers ---------- */
 function baseName(filename){ const i = filename.lastIndexOf('.'); return i>0 ? filename.slice(0,i) : filename; }
 
-/* Accept many timestamp formats (robust): */
 function parseTsToMs(s){
   if (!s) return NaN;
   let m;
-  // 1) yyyy-mm-dd_[hh]-[mm]-[ss]  or  yyyy-mm-dd|hh-mm-ss
   m = s.match(/^(\d{4}-\d{2}-\d{2})[|_](\d{2})-(\d{2})-(\d{2})$/);
   if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
-  // 2) yyyy-mm-dd hh:mm:ss
   m = s.match(/^(\d{4}-\d{2}-\d{2})[ ](\d{2}):(\d{2}):(\d{2})$/);
   if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
-  // 3) yyyy-mm-dd hh-mm-ss (space + dashes)
   m = s.match(/^(\d{4}-\d{2}-\d{2})[ ](\d{2})-(\d{2})-(\d{2})$/);
   if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
-  // 4) fallback: yyyy-mm-ddXhh[:|-]mm[:|-]ss with any single separator X
   m = s.match(/^(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})$/);
   if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
   return NaN;
 }
 
-/* Extract strings for UI labels */
 function extractDateTimeParts(key) {
   const m = key.match(/^(\d{4}-\d{2}-\d{2})[|_ ](\d{2})[-:](\d{2})[-:](\d{2})$/);
   if (!m) return { dateStr: "--", timeStr: "--" };
   return { dateStr: m[1], timeStr: `${m[2]}:${m[3]}:${m[4]}` };
 }
 
-/* Parse coordinates from txt content. */
 function parseCoordsFromText(text){
   let m = text.match(/lat\D*(-?\d+(?:\.\d+)?)\D*lon\D*(-?\d+(?:\.\d+)?)/i);
-  if (!m) m = text.match(/(-?\d+(?:\.\d+)?)\D*,\D*(-?\d+(?:\.\d+)?)/); // "lat,lon"
+  if (!m) m = text.match(/(-?\d+(?:\.\d+)?)\D*,\D*(-?\d+(?:\.\d+)?)/);
   if (!m) {
     const all = [...text.matchAll(/-?\d+(?:\.\d+)?/g)].map(x => parseFloat(x[0]));
     if (all.length >= 2) m = [null, all[0], all[1]];
@@ -201,9 +202,7 @@ async function loadGpsFromTxt(){
         const tsMs = parseTsToMs(key);
         if (Number.isFinite(tsMs)) entry = { key, tsMs, lat: coords.lat, lon: coords.lon, path };
       }
-    } catch (e) {
-      console.warn("GPS read failed:", f.name, e);
-    }
+    } catch (e) { console.warn("GPS read failed:", f.name, e); }
     gpsCache.set(path, { sha: f.sha, entry });
   }
 
@@ -231,7 +230,7 @@ async function loadPhotos(){
   return photos;
 }
 
-/* ---------- pairing (exact-name first, then nearest) ---------- */
+/* ---------- pairing (GPS-driven exact, else nearest) ---------- */
 function buildPairsGpsDriven(photos){
   if (!gpsData.length || !photos?.length) { pairs = []; return; }
 
@@ -240,14 +239,10 @@ function buildPairsGpsDriven(photos){
   const out = [];
 
   for (const g of gpsData) {
-    // exact key match
     const exact = photosByKey.get(g.key);
     if (exact && !used[exact.i]) {
-      used[exact.i] = true;
-      out.push({ gps:g, photo: exact.p });
-      continue;
+      used[exact.i] = true; out.push({ gps:g, photo: exact.p }); continue;
     }
-    // fallback: nearest in time
     let best=-1, diff=Infinity;
     for (let i=0;i<photos.length;i++){
       if (used[i]) continue;
@@ -281,12 +276,11 @@ async function loadImage(info){
   feedPlaceholder.style.display="flex"; feedImg.style.display="none";
   return new Promise(res=>{
     const img = new Image();
-    const url = info.url + "?" + Date.now(); // cache-bust
+    const url = info.url + "?" + Date.now();
     img.onload=()=>{ 
       feedImg.src=url; feedImg.style.display="block"; feedPlaceholder.style.display="none"; filenameDisplayEl.textContent = info.name;
       const { dateStr, timeStr } = extractDateTimeParts(info.key || baseName(info.name));
-      photoDateEl.textContent = dateStr; photoTimeEl.textContent = timeStr;
-      res();
+      photoDateEl.textContent = dateStr; photoTimeEl.textContent = timeStr; res();
     };
     img.onerror=()=>{ feedPlaceholder.textContent="Error loading image"; res(); };
     img.src = url;
@@ -345,6 +339,52 @@ async function rebuildAndShowLatest(){
 }
 async function manualRefresh(){ photosFingerprint=""; gpsFingerprint=""; await rebuildAndShowLatest(); }
 
+/* ---------- Discard integration (server-side) ---------- */
+async function discardOnServer(repoPath, mode="trash"){
+  const base = DISCARD_API_BASE || "";
+  const r = await fetch(`${base}/discard?path=${encodeURIComponent(repoPath)}&mode=${encodeURIComponent(mode)}`, {
+    method: "DELETE"
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`Discard failed: ${t}`);
+  }
+  return r.json();
+}
+
+function currentPhotoPath(){
+  if (!pairs.length) return null;
+  const pair = pairs[currentPairIndex];
+  if (!pair || !pair.photo) return null;
+  return `photos/${pair.photo.name}`;
+}
+
+document.getElementById("discardToTrashBtn").onclick = async () => {
+  const path = currentPhotoPath();
+  if (!path){ diagEl.textContent="diag: no photo to discard"; return; }
+  try {
+    await discardOnServer(path, "trash");
+    await manualRefresh();
+    if (currentPairIndex >= pairs.length) currentPairIndex = Math.max(0, pairs.length-1);
+    if (pairs.length) await showPair(currentPairIndex);
+    diagEl.textContent = `diag: moved to trash ${path}`;
+  } catch(e){ console.error(e); alert(e.message); diagEl.textContent = `diag error: ${e.message}`; }
+};
+
+document.getElementById("discardDeleteBtn").onclick = async () => {
+  const path = currentPhotoPath();
+  if (!path){ diagEl.textContent="diag: no photo to delete"; return; }
+  if (!confirm("Delete this image from the repository? This cannot be undone.")) return;
+  try {
+    await discardOnServer(path, "delete");
+    await manualRefresh();
+    if (currentPairIndex >= pairs.length) currentPairIndex = Math.max(0, pairs.length-1);
+    if (pairs.length) await showPair(currentPairIndex);
+    diagEl.textContent = `diag: deleted ${path}`;
+  } catch(e){ console.error(e); alert(e.message); diagEl.textContent = `diag error: ${e.message}`; }
+};
+
+/* ---------- boot ---------- */
 window.addEventListener("DOMContentLoaded", rebuildAndShowLatest);
 setInterval(rebuildAndShowLatest, POLL_MS);
 </script>
