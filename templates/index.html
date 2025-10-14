@@ -95,19 +95,13 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 /* ====== CONFIG ====== */
-const githubRepo   = "Fatma-Alhosani/drone-dashboard"; // owner/repo
-const photosPath   = "photos";
-const gpsFolder    = "GPS";
 const POLL_MS      = 30000;
-const MAX_DELTA_MS = 60 * 1000; // 60s window
-
-// API base: same origin (because this page is served by Flask).
-const DISCARD_API_BASE = window.location.origin;
+const MAX_DELTA_MS = 60 * 1000; // 60s
+const DISCARD_API_BASE = window.location.origin; // same-origin
 /* ==================== */
 
 let pairs = [], gpsData = [], currentPairIndex = 0;
 let photosFingerprint = "", gpsFingerprint = "";
-const gpsCache = new Map();
 
 /* ---------- DOM ---------- */
 const feedImg = document.getElementById("feedImg");
@@ -127,18 +121,6 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
   {attribution:"© OpenStreetMap"}).addTo(map);
 const marker = L.marker([0,0]).addTo(map);
 
-/* ---------- GitHub helpers ---------- */
-async function ghJSON(path){
-  const r = await fetch(`https://api.github.com/repos/${githubRepo}/${path}`);
-  if (!r.ok) throw new Error(`GitHub API error: ${r.status} ${await r.text()}`);
-  return r.json();
-}
-async function ghRaw(path){
-  const r = await fetch(`https://raw.githubusercontent.com/${githubRepo}/main/${path}?ts=${Date.now()}`);
-  if (!r.ok) throw new Error(`Raw fetch error: ${r.status} ${await r.text()}`);
-  return r.text();
-}
-
 /* ---------- parsing helpers ---------- */
 function baseName(filename){ const i = filename.lastIndexOf('.'); return i>0 ? filename.slice(0,i) : filename; }
 function parseTsToMs(s){
@@ -154,69 +136,36 @@ function extractDateTimeParts(key) {
   if (!m) return { dateStr: "--", timeStr: "--" };
   return { dateStr: m[1], timeStr: `${m[2]}:${m[3]}:${m[4]}` };
 }
-function parseCoordsFromText(text){
-  let m = text.match(/lat\D*(-?\d+(?:\.\d+)?)\D*lon\D*(-?\d+(?:\.\d+)?)/i);
-  if (!m) m = text.match(/(-?\d+(?:\.\d+)?)\D*,\D*(-?\d+(?:\.\d+)?)/);
-  if (!m) {
-    const all = [...text.matchAll(/-?\d+(?:\.\d+)?/g)].map(x => parseFloat(x[0]));
-    if (all.length >= 2) m = [null, all[0], all[1]];
-  }
-  if (!m) return null;
-  const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
-  return { lat, lon };
-}
 
-/* ---------- load GPS (TXT) ---------- */
+/* ---------- load via Flask (token-auth to GitHub) ---------- */
 async function loadGpsFromTxt(){
-  const list = await ghJSON(`contents/${gpsFolder}`);
-  const txtFiles = list.filter(i => i.type === "file" && /\.txt$/i.test(i.name));
-
-  const newGpsFingerprint = txtFiles.map(f => `${f.name}:${f.sha}`).join("|");
-  if (newGpsFingerprint === gpsFingerprint && gpsData.length) return false;
+  const r = await fetch(`/repo/gps`);
+  if (!r.ok) throw new Error(await r.text());
+  const data = await r.json();
+  const rows = data.gps || [];
+  const newGpsFingerprint = rows.map(x => `${x.key}:${x.tsMs}`).join("|");
+  const changed = (newGpsFingerprint !== gpsFingerprint);
   gpsFingerprint = newGpsFingerprint;
-
-  for (const f of txtFiles) {
-    const path = `${gpsFolder}/${f.name}`;
-    const cached = gpsCache.get(path);
-    if (cached && cached.sha === f.sha) continue;
-
-    let entry = null;
-    try {
-      const text = await ghRaw(path);
-      const coords = parseCoordsFromText(text);
-      if (coords) {
-        const key = baseName(f.name);
-        const tsMs = parseTsToMs(key);
-        if (Number.isFinite(tsMs)) entry = { key, tsMs, lat: coords.lat, lon: coords.lon, path };
-      }
-    } catch (e) { console.warn("GPS read failed:", f.name, e); }
-    gpsCache.set(path, { sha: f.sha, entry });
-  }
-
-  gpsData = [];
-  for (const { entry } of gpsCache.values()) if (entry) gpsData.push(entry);
-  gpsData.sort((a,b) => a.tsMs - b.tsMs);
-  return true;
+  gpsData = rows;
+  return changed;
 }
 
-/* ---------- load photos ---------- */
 async function loadPhotos(){
-  const items = await ghJSON(`contents/${photosPath}`);
-  const files = items.filter(i => i.type === "file" && /\.(jpe?g|png)$/i.test(i.name));
-  const newFp = files.map(f => f.sha).join(":");
-  if (newFp === photosFingerprint && pairs.length) return null;
+  const r = await fetch(`/repo/photos`);
+  if (!r.ok) throw new Error(await r.text());
+  const data = await r.json();
+  const ph = data.photos || [];
+  const newFp = ph.map(p => `${p.name}:${p.tsMs}`).join(":");
+  const changed = (newFp !== photosFingerprint);
   photosFingerprint = newFp;
 
-  const photos = files.map(f => {
-    const key = baseName(f.name);
-    const tsMs = parseTsToMs(key);
-    return { name: f.name, key, url: f.download_url, tsMs };
-  }).filter(p => Number.isFinite(p.tsMs));
-
-  photos.sort((a,b) => a.tsMs - b.tsMs);
-  return photos;
+  const photos = ph.map(p => ({
+    name: p.name,
+    key: p.key,
+    tsMs: p.tsMs,
+    url: p.download_url
+  }));
+  return changed ? photos : null;
 }
 
 /* ---------- pairing ---------- */
@@ -293,61 +242,4 @@ function setTheme(light){document.body.classList.toggle("light",light);themeTogg
 themeToggle.onclick=()=>setTheme(!document.body.classList.contains("light"));
 if(localStorage.getItem("theme")==="light")setTheme(true);
 
-/* ---------- refresh loop ---------- */
-async function reloadGpsDriven(){
-  try{
-    await loadGpsFromTxt();
-    const photos = await loadPhotos();
-    if (!photos && pairs.length) return false;
-    buildPairsGpsDriven(photos || []);
-    diagEl.textContent = `diag: photos=${photos?photos.length:"(cached)"} gps=${gpsData.length} pairs=${pairs.length}`;
-    return true;
-  } catch (e) { diagEl.textContent = `diag error: ${e.message}`; console.error(e); return false; }
-}
-async function rebuildAndShowLatest(){
-  const changed = await reloadGpsDriven();
-  if (!pairs.length){ updateCounter(); feedImg.style.display="none"; feedPlaceholder.style.display="flex"; return; }
-  if (changed) await showPair(currentPairIndex);
-}
-async function manualRefresh(){ photosFingerprint=""; gpsFingerprint=""; await rebuildAndShowLatest(); }
-
-/* ---------- Discard (calls Flask) ---------- */
-async function discardOnServer(repoPath, mode="trash"){
-  const url = `${DISCARD_API_BASE}/discard?path=${encodeURIComponent(repoPath)}&mode=${encodeURIComponent(mode)}`;
-  const r = await fetch(url, { method: "POST" }); // POST for broad compatibility
-  if (!r.ok) throw new Error(`Discard failed: ${await r.text()}`);
-  return r.json();
-}
-function currentPhotoPath(){
-  if (!pairs.length) return null;
-  const pair = pairs[currentPairIndex];
-  return pair?.photo?.name ? `photos/${pair.photo.name}` : null;
-}
-document.getElementById("discardToTrashBtn").onclick = async () => {
-  const path = currentPhotoPath(); if (!path){ diagEl.textContent="diag: no photo to trash"; return; }
-  try {
-    await discardOnServer(path, "trash");
-    await manualRefresh();
-    if (currentPairIndex >= pairs.length) currentPairIndex = Math.max(0, pairs.length-1);
-    if (pairs.length) await showPair(currentPairIndex);
-    diagEl.textContent = `diag: moved to trash ${path}`;
-  } catch(e){ alert(e.message); diagEl.textContent = `diag error: ${e.message}`; }
-};
-document.getElementById("discardDeleteBtn").onclick = async () => {
-  const path = currentPhotoPath(); if (!path){ diagEl.textContent="diag: no photo to delete"; return; }
-  if (!confirm("Delete this image from the repository? This cannot be undone.")) return;
-  try {
-    await discardOnServer(path, "delete");
-    await manualRefresh();
-    if (currentPairIndex >= pairs.length) currentPairIndex = Math.max(0, pairs.length-1);
-    if (pairs.length) await showPair(currentPairIndex);
-    diagEl.textContent = `diag: deleted ${path}`;
-  } catch(e){ alert(e.message); diagEl.textContent = `diag error: ${e.message}`; }
-};
-
-/* ---------- boot ---------- */
-window.addEventListener("DOMContentLoaded", rebuildAndShowLatest);
-setInterval(rebuildAndShowLatest, POLL_MS);
-</script>
-</body>
-</html>
+/* ---------- refresh loop ---*
