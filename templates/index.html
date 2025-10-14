@@ -1,264 +1,3 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Drone Surveillance Dashboard</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <style>
-    :root{ --bg:#111; --card:#1e1e1e; --sub:#151515; --accent:#4CAF50; --muted:#aaa; --border:#333; }
-    body.light { --bg:#f5f5f5; --card:#fff; --sub:#f0f0f0; --accent:#0066cc; --muted:#555; --border:#ccc; color:#000; }
-    body{margin:0;font-family:'Segoe UI',Tahoma,Verdana,sans-serif;background:var(--bg);color:#fff}
-    header{background:#000;padding:15px 30px;font-size:20px;font-weight:bold;display:flex;justify-content:space-between;align-items:center}
-    body.light header{background:#eee;color:#000}
-    .header-status{font-size:14px;color:var(--accent);display:flex;align-items:center;gap:15px}
-    .status-dot{width:10px;height:10px;background:var(--accent);border-radius:50%}
-    .theme-toggle{cursor:pointer;padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:var(--sub);color:inherit;font-size:14px}
-    .wrap{padding:32px;display:flex;justify-content:center}
-    .violations{width:70vw;background:var(--card);border-radius:14px;padding:24px;box-shadow:0 0 18px rgba(0,0,0,.35)}
-    .violations h2{margin:0 0 18px 0;font-size:26px;color:var(--accent);padding-bottom:10px;border-bottom:1px solid var(--border)}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
-    @media (max-width:980px){.grid{grid-template-columns:1fr}.violations{width:90vw}}
-    .pane{background:var(--sub);border:1px solid var(--border);border-radius:10px;padding:16px;min-height:520px}
-    .pane h3{margin:0 0 10px 0;font-size:15px;text-transform:uppercase;color:#ddd;display:flex;justify-content:space-between;align-items:center}
-    body.light .pane h3{color:#222}
-    .tiny{font-size:12px;color:var(--muted);background:#2b2b2b;padding:4px 8px;border-radius:6px}
-    body.light .tiny{background:#ddd}
-    .feed-container{position:relative;width:100%;height:clamp(400px,45vh,640px);border-radius:10px;overflow:hidden;background:#101010}
-    body.light .feed-container{background:#e0e0e0}
-    .feed-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#bbb}
-    #feedImg{width:100%;height:100%;object-fit:contain;border-radius:10px;display:none}
-    #map{height:clamp(320px,40vh,560px);border-radius:10px;margin-top:6px}
-    .coordinates-list{max-height:clamp(160px,22vh,320px);overflow-y:auto;background:#1c1c1c;padding:8px;border-radius:8px;margin-top:10px;font-family:monospace;border:1px solid var(--border)}
-    body.light .coordinates-list{background:#fafafa}
-    .coordinates-list div{padding:7px 6px;border-bottom:1px solid #2f2f2f;cursor:pointer}
-    .coordinates-list div:hover{background:#2a2a2a}
-    .coordinates-list div:last-child{border-bottom:none}
-    .active-coordinate{background:#272727;font-weight:bold}
-    body.light .active-coordinate{background:#ddd}
-    .controls{display:flex;align-items:center;justify-content:center;gap:10px;margin:18px 6px;flex-wrap:wrap}
-    .control-btn{background:#333;color:#fff;border:1px solid #444;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:15px}
-    body.light .control-btn{background:#eee;color:#000;border:1px solid #bbb}
-    .counter{font-size:14px;color:var(--muted);padding:6px 10px;background:#232323;border:1px solid #3a3a3a;border-radius:8px}
-    body.light .counter{background:#f0f0f0;color:#555;border:1px solid #bbb}
-    #diag{margin-top:6px;font-size:12px;color:#9aa;opacity:.9}
-  </style>
-</head>
-<body>
-<header>
-  <div>DRONE SURVEILLANCE DASHBOARD</div>
-  <div class="header-status">
-    <div class="status-dot"></div><span id="connectionStatus">OPERATIONAL</span>
-    <button class="theme-toggle" id="themeToggle">🌙 Dark</button>
-  </div>
-</header>
-
-<div class="wrap">
-  <section class="violations">
-    <h2>Possible Violations</h2>
-    <div class="grid">
-      <div class="pane">
-        <h3>Images <span class="tiny" id="filenameDisplay">Loading…</span></h3>
-        <div class="feed-container"><div id="feedPlaceholder" class="feed-placeholder">Loading…</div><img id="feedImg" alt=""></div>
-        <div class="tiny" style="margin-top:10px">
-          Date: <span id="photoDate">--</span> | Time: <span id="photoTime">--</span>
-        </div>
-      </div>
-      <div class="pane">
-        <h3>GPS Coordinates <span class="tiny">TXT files</span></h3>
-        <div style="background:#8b1f1f;padding:10px;border-radius:8px;margin-bottom:8px;">
-          <div style="display:flex;justify-content:space-between;font-weight:bold;">
-            <span>Current GPS Location</span><span id="currentCoord">--, --</span>
-          </div>
-          <div style="font-size:12px" id="currentTime">timestamp: --</div>
-        </div>
-        <div id="map"></div>
-        <h4 style="margin:12px 4px 6px">GPS Coordinates</h4>
-        <div class="coordinates-list" id="coordinatesList"></div>
-      </div>
-    </div>
-
-    <div class="controls">
-      <button class="control-btn" id="prevBtn">Previous</button>
-      <button class="control-btn" id="refreshBtn">Refresh</button>
-      <span class="counter" id="pairCounter">Pair 0 of 0</span>
-      <button class="control-btn" id="nextBtn">Next</button>
-
-      <!-- Removed Trash button per request -->
-      <button class="control-btn" id="discardDeleteBtn" title="Delete from repo">Delete</button>
-      <span class="tiny">This permanently deletes from GitHub</span>
-    </div>
-
-    <div id="diag"></div>
-  </section>
-</div>
-
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-/* ====== CONFIG ====== */
-const POLL_MS      = 30000;
-const MAX_DELTA_MS = 60 * 1000; // 60s
-const DISCARD_API_BASE = window.location.origin; // same-origin
-/* ==================== */
-
-let pairs = [], gpsData = [], currentPairIndex = 0;
-let photosFingerprint = "", gpsFingerprint = "";
-
-/* ---------- DOM ---------- */
-const feedImg = document.getElementById("feedImg");
-const feedPlaceholder = document.getElementById("feedPlaceholder");
-const filenameDisplayEl = document.getElementById("filenameDisplay");
-const pairCounterEl = document.getElementById("pairCounter");
-const currentCoordEl = document.getElementById("currentCoord");
-const currentTimeEl = document.getElementById("currentTime");
-const coordinatesListEl = document.getElementById("coordinatesList");
-const photoDateEl = document.getElementById("photoDate");
-const photoTimeEl = document.getElementById("photoTime");
-const diagEl = document.getElementById("diag");
-
-/* ---------- Map ---------- */
-const map = L.map("map").setView([0,0], 2);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-  {attribution:"© OpenStreetMap"}).addTo(map);
-const marker = L.marker([0,0]).addTo(map);
-
-/* ---------- parsing helpers ---------- */
-function baseName(filename){ const i = filename.lastIndexOf('.'); return i>0 ? filename.slice(0,i) : filename; }
-function parseTsToMs(s){
-  let m;
-  m = s?.match(/^(\d{4}-\d{2}-\d{2})[|_](\d{2})-(\d{2})-(\d{2})$/);
-  if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
-  m = s?.match(/^(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})$/);
-  if (m) return Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
-  return NaN;
-}
-function extractDateTimeParts(key) {
-  const m = key?.match(/^(\d{4}-\d{2}-\d{2})[|_ ](\d{2})[-:](\d{2})[-:](\d{2})$/);
-  if (!m) return { dateStr: "--", timeStr: "--" };
-  return { dateStr: m[1], timeStr: `${m[2]}:${m[3]}:${m[4]}` };
-}
-
-/* ---------- load via Flask (token-auth to GitHub) ---------- */
-async function loadGpsFromTxt(){
-  const r = await fetch(`/repo/gps`);
-  if (!r.ok) throw new Error(await r.text());
-  const data = await r.json();
-  const rows = data.gps || [];
-  const newGpsFingerprint = rows.map(x => `${x.key}:${x.tsMs}`).join("|");
-  const changed = (newGpsFingerprint !== gpsFingerprint);
-  gpsFingerprint = newGpsFingerprint;
-  gpsData = rows;
-  return changed;
-}
-
-async function loadPhotos(){
-  const r = await fetch(`/repo/photos`);
-  if (!r.ok) throw new Error(await r.text());
-  const data = await r.json();
-  const ph = data.photos || [];
-  const newFp = ph.map(p => `${p.name}:${p.tsMs}`).join(":");
-  const changed = (newFp !== photosFingerprint);
-  photosFingerprint = newFp;
-
-  const photos = ph.map(p => ({
-    name: p.name,
-    key: p.key,
-    tsMs: p.tsMs,
-    url: p.download_url
-  }));
-  return changed ? photos : null;
-}
-
-/* ---------- pairing ---------- */
-function buildPairsGpsDriven(photos){
-  if (!gpsData.length || !photos?.length) { pairs = []; return; }
-  const photosByKey = new Map(photos.map((p,i)=>[p.key, {p, i}]));
-  const used = new Array(photos.length).fill(false);
-  const out = [];
-  for (const g of gpsData) {
-    const exact = photosByKey.get(g.key);
-    if (exact && !used[exact.i]) { used[exact.i] = true; out.push({ gps:g, photo: exact.p }); continue; }
-    let best=-1, diff=Infinity;
-    for (let i=0;i<photos.length;i++){
-      if (used[i]) continue;
-      const d = Math.abs(photos[i].tsMs - g.tsMs);
-      if (d < diff){ diff = d; best = i; }
-    }
-    if (best>=0 && diff<=MAX_DELTA_MS) { used[best]=true; out.push({ gps:g, photo:photos[best] }); }
-  }
-  pairs = out;
-  if (pairs.length) currentPairIndex = Math.min(currentPairIndex, pairs.length-1);
-}
-
-/* ---------- UI helpers ---------- */
-function updateCounter(){ pairCounterEl.textContent = `Pair ${pairs.length ? (currentPairIndex+1) : 0} of ${pairs.length}`; }
-async function showPair(i){
-  if (i<0 || i>=pairs.length) return;
-  const pair = pairs[i];
-  if (!pair.photo){
-    feedImg.style.display="none"; feedPlaceholder.style.display="flex";
-    filenameDisplayEl.textContent="(no photo)"; photoDateEl.textContent="--"; photoTimeEl.textContent="--";
-  } else { await loadImage(pair.photo); }
-  showGPS(pair.gps);
-  updateCounter();
-}
-async function loadImage(info){
-  feedPlaceholder.style.display="flex"; feedImg.style.display="none";
-  return new Promise(res=>{
-    const img = new Image();
-    const url = info.url + "?" + Date.now();
-    img.onload=()=>{ 
-      feedImg.src=url; feedImg.style.display="block"; feedPlaceholder.style.display="none"; filenameDisplayEl.textContent = info.name;
-      const { dateStr, timeStr } = extractDateTimeParts(info.key || baseName(info.name));
-      photoDateEl.textContent = dateStr; photoTimeEl.textContent = timeStr; res();
-    };
-    img.onerror=()=>{ feedPlaceholder.textContent="Error loading image"; res(); };
-    img.src = url;
-  });
-}
-function showGPS(g){
-  const latLabel = g.lat_str ?? String(g.lat);
-  const lonLabel = g.lon_str ?? String(g.lon);
-  currentCoordEl.textContent = `${latLabel}, ${lonLabel}`; // full precision display
-  currentTimeEl.textContent  = `timestamp: ${g.key}`;
-
-  map.setView([g.lat,g.lon], 15);
-  marker.setLatLng([g.lat,g.lon]);
-
-  // render clickable list
-  coordinatesListEl.innerHTML = "";
-  gpsData.forEach((r, idx)=>{
-    const el = document.createElement("div");
-    const la = r.lat_str ?? String(r.lat);
-    const lo = r.lon_str ?? String(r.lon);
-    el.textContent = `${la}, ${lo} [${r.key}]`;
-    el.dataset.key = r.key;
-    if (r.key === g.key) el.classList.add("active-coordinate");
-    el.addEventListener("click", () => {
-      // jump to this gps's pair
-      const pIndex = pairs.findIndex(p => p.gps.key === r.key);
-      if (pIndex >= 0) { currentPairIndex = pIndex; showPair(currentPairIndex); }
-    });
-    coordinatesListEl.appendChild(el);
-  });
-}
-
-/* ---------- controls ---------- */
-document.getElementById("nextBtn").onclick = ()=>{ if(currentPairIndex<pairs.length-1){ currentPairIndex++; showPair(currentPairIndex);} };
-document.getElementById("prevBtn").onclick = ()=>{ if(currentPairIndex>0){ currentPairIndex--; showPair(currentPairIndex);} };
-document.getElementById("refreshBtn").onclick = manualRefresh;
-
-window.addEventListener("keydown",e=>{
-  if(e.key==="ArrowRight") document.getElementById("nextBtn").click();
-  if(e.key==="ArrowLeft")  document.getElementById("prevBtn").click();
-  if(e.key.toLowerCase()==="r") document.getElementById("refreshBtn").click();
-});
-
-const themeToggle=document.getElementById("themeToggle");
-function setTheme(light){document.body.classList.toggle("light",light);themeToggle.textContent=light?"☀️ Light":"🌙 Dark";localStorage.setItem("theme",light?"light":"dark");}
-themeToggle.onclick=()=>setTheme(!document.body.classList.contains("light"));
-if(localStorage.getItem("theme")==="light")setTheme(true);
-
 /* ---------- refresh loop (force-capable) ---------- */
 async function reloadGpsDriven(force = false){
   try{
@@ -266,9 +5,11 @@ async function reloadGpsDriven(force = false){
     const photos = await loadPhotos();
     const photosChanged = !!photos;
 
+    // Always rebuild on force or any change
     if (force || gpsChanged || photosChanged) {
       buildPairsGpsDriven(photos || []);
-      currentPairIndex = Math.max(0, pairs.length - 1); // newest on refresh
+      // Jump to newest; if none, go to first GPS (photo optional)
+      currentPairIndex = pairs.length ? pairs.length - 1 : 0;
       diagEl.textContent = `diag: refreshed photos=${photos?photos.length:"(cached)"} gps=${gpsData.length} pairs=${pairs.length}`;
       return true;
     }
@@ -284,49 +25,24 @@ async function reloadGpsDriven(force = false){
 async function rebuildAndShowLatest(force=false){
   await reloadGpsDriven(force);
   if (!pairs.length){
+    // still show the most recent GPS even if no photo pairs were built
+    if (gpsData.length) {
+      const last = gpsData[gpsData.length - 1];
+      showGPS(last);
+    }
     updateCounter();
     feedImg.style.display="none";
     feedPlaceholder.style.display="flex";
-    feedPlaceholder.textContent = "No data available";
+    feedPlaceholder.textContent = pairs.length ? "Loading…" : "No photo paired for latest GPS";
     return;
   }
   await showPair(currentPairIndex);
 }
 
+// hook button
 async function manualRefresh(){
   diagEl.textContent = "diag: refreshing...";
   photosFingerprint = "";
   gpsFingerprint = "";
-  await rebuildAndShowLatest(true); // force full reload
+  await rebuildAndShowLatest(true); // force
 }
-
-/* ---------- Delete (calls Flask) ---------- */
-async function discardOnServer(repoPath){
-  const url = `${DISCARD_API_BASE}/discard?path=${encodeURIComponent(repoPath)}&mode=delete`;
-  const r = await fetch(url, { method: "POST" });
-  if (!r.ok) throw new Error(`Delete failed: ${await r.text()}`);
-  return r.json();
-}
-function currentPhotoPath(){
-  if (!pairs.length) return null;
-  const pair = pairs[currentPairIndex];
-  return pair?.photo?.name ? `photos/${pair.photo.name}` : null;
-}
-document.getElementById("discardDeleteBtn").onclick = async () => {
-  const path = currentPhotoPath(); if (!path){ diagEl.textContent="diag: no photo to delete"; return; }
-  if (!confirm("Delete this image from the repository? This cannot be undone.")) return;
-  try {
-    await discardOnServer(path);
-    await manualRefresh();
-    if (currentPairIndex >= pairs.length) currentPairIndex = Math.max(0, pairs.length-1);
-    if (pairs.length) await showPair(currentPairIndex);
-    diagEl.textContent = `diag: deleted ${path}`;
-  } catch(e){ alert(e.message); diagEl.textContent = `diag error: ${e.message}`; }
-};
-
-/* ---------- boot ---------- */
-window.addEventListener("DOMContentLoaded", () => rebuildAndShowLatest(true));
-setInterval(rebuildAndShowLatest, POLL_MS);
-</script>
-</body>
-</html>
