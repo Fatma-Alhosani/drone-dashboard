@@ -40,6 +40,7 @@
     body.light .control-btn{background:#eee;color:#000;border:1px solid #bbb;}
     .counter{font-size:13px;color:var(--muted);padding:6px 10px;background:#232323;border:1px solid #3a3a3a;border-radius:8px;}
     body.light .counter{background:#f0f0f0;color:#555;border:1px solid #bbb;}
+    .meta-row{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;}
   </style>
 </head>
 <body>
@@ -58,6 +59,11 @@
       <div class="pane">
         <h3>Images <span class="tiny" id="filenameDisplay">Loading…</span></h3>
         <div class="feed-container"><div id="feedPlaceholder" class="feed-placeholder">Loading…</div><img id="feedImg" alt=""></div>
+        <!-- NEW: photo date/time from filename -->
+        <div class="meta-row">
+          <span class="tiny">Date: <span id="photoDate">--</span></span>
+          <span class="tiny">Time: <span id="photoTime">--</span></span>
+        </div>
       </div>
       <div class="pane">
         <h3>GPS Coordinates <span class="tiny">TXT files</span></h3>
@@ -103,6 +109,9 @@ const pairCounterEl = document.getElementById("pairCounter");
 const currentCoordEl = document.getElementById("currentCoord");
 const currentTimeEl = document.getElementById("currentTime");
 const coordinatesListEl = document.getElementById("coordinatesList");
+/* NEW: photo date/time elements */
+const photoDateEl = document.getElementById("photoDate");
+const photoTimeEl = document.getElementById("photoTime");
 
 /* ---------- Map ---------- */
 const map = L.map("map").setView([0,0], 2);
@@ -143,18 +152,21 @@ function parseTsToMs(s){
   return NaN;
 }
 
-/* Parse coordinates from txt content.
-   Supports:
-   - "24.12345, 54.98765"
-   - "lat: 24.123 lon: 54.987"
-   - first two floats in the file (validated by range)
-*/
+/* NEW: extract Date + Time strings from a filename key */
+function extractDateTimeParts(key) {
+  // key like "2025-10-12_14-34-58" (or with | or space)
+  const m = key.match(/^(\d{4}-\d{2}-\d{2})[|_ ](\d{2})[-:](\d{2})[-:](\d{2})$/);
+  if (!m) return { dateStr: "--", timeStr: "--" };
+  const dateStr = m[1];                           // yyyy-mm-dd
+  const timeStr = `${m[2]}-${m[3]}-${m[4]}`;      // hh-mm-ss (kept with dashes as requested)
+  return { dateStr, timeStr };
+}
+
+/* Parse coordinates from txt content. */
 function parseCoordsFromText(text){
-  // Try explicit lat/lon labels first
   let m = text.match(/lat\D*(-?\d+(?:\.\d+)?)\D*lon\D*(-?\d+(?:\.\d+)?)/i);
-  if (!m) m = text.match(/(-?\d+(?:\.\d+)?)\D*,\D*(-?\d+(?:\.\d+)?)/); // "lat,lon"
+  if (!m) m = text.match(/(-?\d+(?:\.\d+)?)\D*,\D*(-?\d+(?:\.\d+)?)/);
   if (!m) {
-    // finally: first two floats in the text
     const all = [...text.matchAll(/-?\d+(?:\.\d+)?/g)].map(x => parseFloat(x[0]));
     if (all.length >= 2) m = [null, all[0], all[1]];
   }
@@ -170,18 +182,15 @@ async function loadGpsFromTxt(){
   const list = await ghJSON(`contents/${gpsFolder}`);
   const txtFiles = list.filter(i => i.type === "file" && /\.txt$/i.test(i.name));
 
-  // folder fingerprint to early-exit when nothing changed
   const newGpsFingerprint = txtFiles.map(f => `${f.name}:${f.sha}`).join("|");
   if (newGpsFingerprint === gpsFingerprint && gpsData.length) return false;
   gpsFingerprint = newGpsFingerprint;
 
-  // fetch & parse only files with new sha (cache others)
   for (const f of txtFiles) {
     const path = `${gpsFolder}/${f.name}`;
     const cached = gpsCache.get(path);
-    if (cached && cached.sha === f.sha) continue; // unchanged
+    if (cached && cached.sha === f.sha) continue;
 
-    // fetch raw content and parse
     let entry = null;
     try {
       const text = await ghRaw(path);
@@ -199,7 +208,6 @@ async function loadGpsFromTxt(){
     gpsCache.set(path, { sha: f.sha, entry });
   }
 
-  // Build gpsData from cached parsed entries
   gpsData = [];
   for (const { entry } of gpsCache.values()) {
     if (entry) gpsData.push(entry);
@@ -219,15 +227,16 @@ async function loadPhotos(){
   photosFingerprint = newFp;
 
   const photos = files.map(f => {
-    const tsMs = parseTsToMs(baseName(f.name));
-    return { name: f.name, url: f.download_url, tsMs };
+    const key = baseName(f.name);
+    const tsMs = parseTsToMs(key);
+    return { name: f.name, key, url: f.download_url, tsMs };
   }).filter(p => Number.isFinite(p.tsMs));
 
   photos.sort((a,b) => a.tsMs - b.tsMs);
   return photos;
 }
 
-/* ---------- GPS-driven pairing: for each GPS pick nearest unused photo ---------- */
+/* ---------- GPS-driven pairing ---------- */
 function buildPairsGpsDriven(photos){
   if (!gpsData.length || !photos || !photos.length) { pairs = []; return; }
 
@@ -248,10 +257,6 @@ function buildPairsGpsDriven(photos){
     if (idx>=0 && diff<=MAX_DELTA_MS && !used[idx]) {
       used[idx] = true;
       out.push({ gps:g, photo:photos[idx] });
-    } else {
-      // keep unmatched GPS? uncomment to include placeholders:
-      // out.push({ gps:g, photo:null });
-      // For now we skip unmatched GPS to keep UI concise.
     }
   }
 
@@ -264,28 +269,45 @@ function buildPairsGpsDriven(photos){
 function updateCounter(){
   pairCounterEl.textContent = `Pair ${pairs.length ? (currentPairIndex+1) : 0} of ${pairs.length}`;
 }
+
 async function showPair(i){
   if (i<0 || i>=pairs.length) return;
   const pair = pairs[i];
   if (!pair.photo){
     feedImg.style.display="none"; feedPlaceholder.style.display="flex";
     filenameDisplayEl.textContent="(no photo)";
+    photoDateEl.textContent = "--";
+    photoTimeEl.textContent = "--";
   } else {
     await loadImage(pair.photo);
   }
   showGPS(pair.gps);
   updateCounter();
 }
+
 async function loadImage(info){
   feedPlaceholder.style.display="flex"; feedImg.style.display="none";
   return new Promise(res=>{
     const img = new Image();
     const url = info.url + "?" + Date.now(); // cache-bust
-    img.onload=()=>{ feedImg.src=url; feedImg.style.display="block"; feedPlaceholder.style.display="none"; filenameDisplayEl.textContent = info.name; res(); };
+    img.onload=()=>{ 
+      feedImg.src=url; 
+      feedImg.style.display="block"; 
+      feedPlaceholder.style.display="none"; 
+      filenameDisplayEl.textContent = info.name; 
+
+      // NEW: set Date/Time from filename key
+      const { dateStr, timeStr } = extractDateTimeParts(info.key || baseName(info.name));
+      photoDateEl.textContent = dateStr;
+      photoTimeEl.textContent = timeStr;
+
+      res(); 
+    };
     img.onerror=()=>{ feedPlaceholder.textContent="Error loading image"; res(); };
     img.src = url;
   });
 }
+
 function showGPS(g){
   currentCoordEl.textContent = `${g.lat.toFixed(5)}, ${g.lon.toFixed(5)}`;
   currentTimeEl.textContent  = `timestamp: ${g.key}`;
@@ -318,7 +340,7 @@ if(localStorage.getItem("theme")==="light")setTheme(true);
 
 /* ---------- refresh loop ---------- */
 async function reloadGpsDriven(){
-  await loadGpsFromTxt();           // <-- TXT only
+  await loadGpsFromTxt();           // TXT only
   const photos = await loadPhotos();
   if (!photos && pairs.length) return false; // nothing changed
   buildPairsGpsDriven(photos || []);
