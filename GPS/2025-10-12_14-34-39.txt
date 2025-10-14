@@ -1,3 +1,0 @@
-Latitude: 25.3118836
-Longitude: 55.4919043
-Altitude: -0.10 m

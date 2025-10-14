@@ -1,7 +1,0 @@
-
-3 lines (3 loc) · 61 Bytes
-Latitude: 25.3118841
-Longitude: 55.4919017
-Altitude: -0.20 m
-
-
