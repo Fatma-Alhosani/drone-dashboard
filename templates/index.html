@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Drone Dashboard (GitHub-Hosted, Hide/Log)</title>
+<title>Drone Dashboard</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
 <style>
 :root{ --bg:#121212; --card:#1e1e1e; --sub:#151515; --accent:#4CAF50; --muted:#9aa; --border:#333; --danger:#b43; --chip:#2b2b2b; }
@@ -36,7 +36,7 @@ a.link{color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--a
 <header>
   <div>DRONE SURVEILLANCE DASHBOARD</div>
   <div class="status">
-    <div class="dot"></div><span>GitHub mode (read-only)</span>
+    <div class="dot"></div><span>GitHub Pages (static)</span>
     <button id="themeBtn" class="btn">🌙 Dark</button>
   </div>
 </header>
@@ -94,18 +94,10 @@ a.link{color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--a
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 <script>
-/* ====== CONFIG (edit if you fork) ====== */
-const OWNER = "Fatma-Alhosani";
-const REPO  = "drone-dashboard";
-const BRANCH = "main";
-const PHOTOS_DIR = "photos";
-const GPS_DIR    = "GPS";
-const POLL_MS = 60000;
-const MAX_DELTA_MS = 60 * 1000;
-/* ====================================== */
-
-const apiBase = `https://api.github.com/repos/${OWNER}/${REPO}/contents`;
-const rawBase = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}`;
+/* ====== CONFIG ====== */
+const OWNER="Fatma-Alhosani", REPO="drone-dashboard", BRANCH="main";
+const POLL_MS=60000, MAX_DELTA_MS=60*1000;
+/* ==================== */
 
 let photos=[], gps=[], pairs=[], visiblePairs=[], idx=0;
 let hiddenKeys = new Set(JSON.parse(localStorage.getItem("hidden_keys_v1") || "[]"));
@@ -129,17 +121,6 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"�
 const marker = L.marker([0,0]).addTo(map);
 
 function saveHidden(){ localStorage.setItem("hidden_keys_v1", JSON.stringify([...hiddenKeys])); }
-
-async function ghList(path){
-  const r = await fetch(`${apiBase}/${path}?ref=${BRANCH}`);
-  if(!r.ok) throw new Error(`${path} list failed: ${r.status}`);
-  return r.json();
-}
-async function ghText(path){
-  const r = await fetch(`${rawBase}/${path}`);
-  if(!r.ok) throw new Error(`get ${path} failed: ${r.status}`);
-  return r.text();
-}
 function baseName(n){ const i=n.lastIndexOf('.'); return i>0?n.slice(0,i):n; }
 function parseTsToMs(s){
   if(!s) return NaN;
@@ -155,49 +136,22 @@ function tsToParts(key){
   if(!m) return {date:"—",time:"—"};
   return {date:m[1],time:`${m[2]}:${m[3]}:${m[4]}`};
 }
-function parseCoords(text){
-  let m = text.match(/lat\D*(-?\d+(?:\.\d+)?)\D*lon\D*(-?\d+(?:\.\d+)?)/i);
-  if(!m) m = text.match(/(-?\d+(?:\.\d+)?)\D*,\D*(-?\d+(?:\.\d+)?)/);
-  if(!m){
-    const all = [...text.matchAll(/-?\d+(?:\.\d+)?/g)].map(x=>parseFloat(x[0]));
-    if(all.length>=2) m=[null,all[0],all[1]];
-  }
-  if(!m) return null;
-  const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
-  if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180) return null;
-  return {lat,lon};
+
+async function loadJSON(path){
+  const r = await fetch(path + '?t=' + Date.now());
+  if(!r.ok) throw new Error(`get ${path} failed: ${r.status}`);
+  return r.json();
 }
 
-async function loadPhotos(){
-  const items = await ghList(PHOTOS_DIR);
-  const files = items.filter(i=>i.type==="file" && /\.(jpe?g|png)$/i.test(i.name));
-  photos = files.map(f=>({
-      name:f.name, key:baseName(f.name), tsMs:parseTsToMs(baseName(f.name)),
-      url:`${rawBase}/${PHOTOS_DIR}/${encodeURIComponent(f.name)}`,
-      html_url:`https://github.com/${OWNER}/${REPO}/blob/${BRANCH}/${PHOTOS_DIR}/${encodeURIComponent(f.name)}`
-    }))
-    .filter(p=>Number.isFinite(p.tsMs))
-    .sort((a,b)=>a.tsMs-b.tsMs);
-}
-async function loadGPS(){
-  const items = await ghList(GPS_DIR);
-  const files = items.filter(i=>i.type==="file" && /\.txt$/i.test(i.name));
-  gps = [];
-  for(const f of files){
-    const key = baseName(f.name);
-    const ts = parseTsToMs(key);
-    if(!Number.isFinite(ts)) continue;
-    try{
-      const text = await ghText(`${GPS_DIR}/${f.name}`);
-      const c = parseCoords(text);
-      if(c) gps.push({
-        key, tsMs:ts, lat:c.lat, lon:c.lon,
-        path:`${GPS_DIR}/${f.name}`,
-        html_url:`https://github.com/${OWNER}/${REPO}/blob/${BRANCH}/${GPS_DIR}/${encodeURIComponent(f.name)}`
-      });
-    }catch(e){ /* ignore */ }
+async function reload(){
+  try{
+    photos = (await loadJSON('photos.json')).filter(p=>Number.isFinite(p.tsMs)).sort((a,b)=>a.tsMs-b.tsMs);
+    gps = (await loadJSON('gps.json')).filter(g=>Number.isFinite(g.tsMs)).sort((a,b)=>a.tsMs-b.tsMs);
+    buildPairs(); show();
+    dbg.textContent = `dbg: ok | photos=${photos.length} gps=${gps.length} hidden=${hiddenKeys.size}`;
+  }catch(e){
+    dbg.textContent = 'dbg: '+e.message+' — Did the workflow run to generate photos.json & gps.json?';
   }
-  gps.sort((a,b)=>a.tsMs-b.tsMs);
 }
 
 function buildPairs(){
@@ -217,12 +171,9 @@ function buildPairs(){
 
 function filterVisible(){
   visiblePairs = pairs.filter(pr => !hiddenKeys.has(pr.photo.key));
-  // show most recent visible if possible; else fall back to last overall
-  if(visiblePairs.length) idx = visiblePairs.length - 1;
-  else idx = 0;
+  idx = visiblePairs.length ? visiblePairs.length-1 : 0; // show most recent visible
   updateCounters();
 }
-
 function updateCounters(){
   pairCounter.textContent = `Pair ${visiblePairs.length ? (idx+1) : 0} of ${visiblePairs.length} (visible) / ${pairs.length} (total)`;
   gpsCount.textContent = `${gps.length} items`;
@@ -233,8 +184,8 @@ function show(){
     imgEl.style.display='none'; imgErr.style.display='block'; imgErr.textContent='No visible pairs';
     fname.textContent='—'; dateTxt.textContent='Date: —'; timeTxt.textContent='Time: —';
     coordBadge.textContent='—, —'; gpsList.innerHTML='';
-    openPhoto.href = `https://github.com/${OWNER}/${REPO}/tree/${BRANCH}/${PHOTOS_DIR}`;
-    openGPS.href   = `https://github.com/${OWNER}/${REPO}/tree/${BRANCH}/${GPS_DIR}`;
+    openPhoto.href = `https://github.com/${OWNER}/${REPO}/tree/${BRANCH}/photos`;
+    openGPS.href   = `https://github.com/${OWNER}/${REPO}/tree/${BRANCH}/GPS`;
     return;
   }
   const pr = visiblePairs[idx];
@@ -258,14 +209,14 @@ function show(){
   for(const r of gps){
     const el = document.createElement('div');
     const isHidden = hiddenKeys.has(r.key);
+    if (!showHiddenChk.checked && isHidden) continue;
     el.textContent = `${r.lat.toFixed(5)}, ${r.lon.toFixed(5)} [${r.key}]`;
     if (r.key===pr.gps.key) { el.style.fontWeight='bold'; el.style.background='#242424'; }
     if (isHidden) el.classList.add('hidden');
-    if (!showHiddenChk.checked && isHidden) { /* skip showing hidden */ continue; }
     el.onclick = ()=>{
       const i = visiblePairs.findIndex(x=>x.gps.key===r.key);
       if(i>=0){ idx=i; show(); }
-      else if(hiddenKeys.has(r.key)) alert('This pair is hidden. Toggle "Show hidden" to review, or Unhide in the log.');
+      else if(hiddenKeys.has(r.key)) alert('This pair is hidden. Toggle "Show hidden" to review, or Unhide all.');
     };
     gpsList.appendChild(el);
   }
@@ -275,17 +226,7 @@ function show(){
   openGPS.href   = pr.gps.html_url;
 }
 
-async function reload(){
-  try{
-    await Promise.all([loadPhotos(), loadGPS()]);
-    buildPairs(); show();
-    dbg.textContent = `dbg: ok | hidden=${hiddenKeys.size}`;
-  }catch(e){
-    dbg.textContent = 'dbg: '+e.message;
-  }
-}
-
-/* ---------- Controls ---------- */
+/* ------- Controls ------- */
 document.getElementById('prevBtn').onclick = ()=>{ if(idx>0){ idx--; show(); } };
 document.getElementById('nextBtn').onclick = ()=>{ if(idx<visiblePairs.length-1){ idx++; show(); } };
 document.getElementById('refreshBtn').onclick = reload;
@@ -295,8 +236,7 @@ document.getElementById('discardBtn').onclick = ()=>{
   const pr = visiblePairs[idx];
   hiddenKeys.add(pr.photo.key);
   saveHidden();
-  filterVisible();
-  show();
+  filterVisible(); show();
 };
 
 document.getElementById('unhideAllBtn').onclick = ()=>{
@@ -306,20 +246,16 @@ document.getElementById('unhideAllBtn').onclick = ()=>{
   filterVisible(); show();
 };
 
-// Download a text log of ALL hidden keys (+ helpful links)
 document.getElementById('downloadBtn').onclick = ()=>{
-  if(!hiddenKeys.size){
-    alert('No hidden items yet.');
-    return;
-  }
+  if(!hiddenKeys.size){ alert('No hidden items.'); return; }
   const lines = [];
   lines.push(`# Discard Log (hidden items)`);
   lines.push(`# Repo: ${OWNER}/${REPO}  |  Branch: ${BRANCH}`);
   lines.push(`# Generated: ${new Date().toISOString()}`);
   lines.push(``);
   for(const key of [...hiddenKeys].sort()){
-    const photoURL = `https://github.com/${OWNER}/${REPO}/blob/${BRANCH}/${PHOTOS_DIR}/${encodeURIComponent(key)}.jpg`;
-    const gpsURL   = `https://github.com/${OWNER}/${REPO}/blob/${BRANCH}/${GPS_DIR}/${encodeURIComponent(key)}.txt`;
+    const photoURL = `https://github.com/${OWNER}/${REPO}/blob/${BRANCH}/photos/${encodeURIComponent(key)}.jpg`;
+    const gpsURL   = `https://github.com/${OWNER}/${REPO}/blob/${BRANCH}/GPS/${encodeURIComponent(key)}.txt`;
     lines.push(`- ${key}`);
     lines.push(`  photo: ${photoURL}`);
     lines.push(`  gps:   ${gpsURL}`);
@@ -329,23 +265,19 @@ document.getElementById('downloadBtn').onclick = ()=>{
   saveAs(blob, `discard_log_${stamp}.txt`);
 };
 
-// keyboard
+// keyboard + theme + hidden toggle
 window.addEventListener('keydown', e=>{
   if(e.key==='ArrowRight') document.getElementById('nextBtn').click();
   if(e.key==='ArrowLeft')  document.getElementById('prevBtn').click();
   if(e.key.toLowerCase()==='r') document.getElementById('refreshBtn').click();
 });
+const themeBtn=document.getElementById('themeBtn');
+function setTheme(light){document.body.classList.toggle("light",light);themeBtn.textContent=light?"☀️ Light":"🌙 Dark";localStorage.setItem("theme",light?"light":"dark");}
+themeBtn.onclick=()=>setTheme(!document.body.classList.contains("light"));
+if(localStorage.getItem("theme")==="light") setTheme(true);
+document.getElementById('showHiddenChk').onchange=()=>show();
 
-// show hidden toggle
-showHiddenChk.onchange = ()=> show();
-
-// theme
-const themeBtn = document.getElementById('themeBtn');
-function setTheme(light){ document.body.classList.toggle('light', light); themeBtn.textContent = light?'☀️ Light':'🌙 Dark'; localStorage.setItem('theme', light?'light':'dark'); }
-themeBtn.onclick = ()=> setTheme(!document.body.classList.contains('light'));
-if(localStorage.getItem('theme')==='light') setTheme(true);
-
-// initial
+// boot
 reload(); setInterval(reload, POLL_MS);
 </script>
 </body>
