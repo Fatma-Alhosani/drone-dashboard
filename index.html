@@ -1,143 +1,211 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Drone Surveillance Dashboard</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
-:root {
-  --bg: #111; --card: #1e1e1e; --text: #ddd; --accent: #4caf50; --danger: #d33; --border: #333;
-}
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: Arial, sans-serif;
-  margin: 0; padding: 0;
-}
-header {
-  background: var(--card);
-  color: var(--accent);
-  padding: 12px 20px;
-  font-weight: bold;
-  font-size: 16px;
-  border-bottom: 2px solid var(--border);
-}
-main {
-  display: flex;
-  gap: 16px;
-  padding: 20px;
-}
-.card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-.card h3 {
-  background: var(--bg);
-  padding: 8px;
-  margin: 0;
-  border-bottom: 1px solid var(--border);
-  color: var(--accent);
-  font-size: 14px;
-}
-.card img {
-  max-width: 100%;
-  height: auto;
-  border-radius: 0 0 8px 8px;
-  object-fit: contain;
-}
-.controls {
-  text-align: center;
-  padding: 10px;
-}
-button {
-  padding: 6px 10px;
-  margin: 4px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-button:hover { opacity: 0.9; }
-#prev, #next, #refresh {
-  background: var(--accent);
-  color: white;
-}
-#discard {
-  background: var(--danger);
-  color: white;
-}
-#map { height: 300px; }
-.counter {
-  text-align: center;
-  padding: 6px;
-  font-size: 14px;
-}
+  :root{
+    --bg:#0f0f10; --card:#1a1b1e; --sub:#141518; --accent:#4CAF50; --muted:#a7a7a7; --danger:#c93a3a; --border:#2a2b2f;
+  }
+  body{margin:0;background:var(--bg);color:#eaeaea;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+  header{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;background:#000;border-bottom:1px solid var(--border)}
+  header .status{font-size:12px;color:#9fe79f}
+  .wrap{padding:18px;display:flex;justify-content:center}
+  .grid{width:min(1200px,100%);display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media (max-width:960px){.grid{grid-template-columns:1fr}}
+  .pane{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .pane h3{margin:0;padding:10px 12px;background:var(--sub);border-bottom:1px solid var(--border);font-size:13px;letter-spacing:.3px;color:#ddd}
+  .meta{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted);padding:8px 12px;border-top:1px solid var(--border);background:var(--sub)}
+  .controls{display:flex;gap:10px;justify-content:center;padding:12px;background:var(--sub);border-top:1px solid var(--border)}
+  button{border:1px solid var(--border);background:#232427;color:#fff;padding:9px 14px;border-radius:8px;cursor:pointer}
+  button:active{transform:translateY(1px)}
+  .btn{background:#2a2b31}
+  .btn.primary{background:var(--accent);border-color:#3a8f43}
+  .btn.danger{background:var(--danger);border-color:#942b2b}
+  .counter{font-size:12px;color:var(--muted)}
+  .feed{height:360px;display:flex;align-items:center;justify-content:center;background:#0f1012}
+  #photo{max-width:100%;max-height:100%;object-fit:contain}
+  #map{height:360px}
 </style>
 </head>
 <body>
-<header>🛰️ DRONE SURVEILLANCE DASHBOARD</header>
-<main>
-  <div class="card" id="imageCard">
-    <h3>Images</h3>
-    <img id="photo" src="" alt="No Image"/>
-    <div class="counter" id="counter">0 of 0</div>
-    <div class="controls">
-      <button id="prev">Previous</button>
-      <button id="refresh">Refresh</button>
-      <button id="next">Next</button>
-      <button id="discard">Discard</button>
+<header>
+  <div>🛰️ DRONE SURVEILLANCE DASHBOARD</div>
+  <div class="status">GitHub Pages · static</div>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+    <!-- Images -->
+    <div class="pane">
+      <h3 id="imgTitle">Images</h3>
+      <div class="feed"><img id="photo" alt="No image"/></div>
+      <div class="meta">
+        <span id="dateMeta">Date: —</span>
+        <span id="timeMeta">Time: —</span>
+        <span class="counter" id="pairMeta">Pair 0 of 0</span>
+      </div>
+      <div class="controls">
+        <button class="btn" id="prevBtn">Previous</button>
+        <button class="btn" id="refreshBtn">Refresh</button>
+        <button class="btn" id="nextBtn">Next</button>
+        <button class="btn danger" id="discardBtn">Discard</button>
+      </div>
+    </div>
+
+    <!-- GPS -->
+    <div class="pane">
+      <h3>GPS Coordinates</h3>
+      <div id="map"></div>
+      <div class="meta">
+        <span id="gpsCount">0 items</span>
+        <span id="gpsCoord" style="margin-left:auto">—</span>
+      </div>
     </div>
   </div>
-  <div class="card">
-    <h3>GPS Coordinates</h3>
-    <div id="map"></div>
-    <div class="counter" id="gpsInfo"></div>
-  </div>
-</main>
+</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const photoEl = document.getElementById("photo");
-const counterEl = document.getElementById("counter");
-const gpsInfoEl = document.getElementById("gpsInfo");
+/* ====== STATE ====== */
+let photos = [];      // [{name, url}]
+let gps = [];         // [{name, lat, lng}]
+let idx = 0;          // current index into photos[]
+let discarded = new Set(JSON.parse(localStorage.getItem("discarded") || "[]"));
 
-let photos = [];
-let gpsData = [];
-let index = 0;
-let discarded = JSON.parse(localStorage.getItem("discarded") || "[]");
+/* ====== ELEMENTS ====== */
+const imgTitle = document.getElementById("imgTitle");
+const photoEl  = document.getElementById("photo");
+const dateEl   = document.getElementById("dateMeta");
+const timeEl   = document.getElementById("timeMeta");
+const pairEl   = document.getElementById("pairMeta");
+const gpsCount = document.getElementById("gpsCount");
+const gpsCoord = document.getElementById("gpsCoord");
 
-async function loadData() {
-  try {
-    const [p, g] = await Promise.all([
-      fetch("photos.json").then(r => r.json()),
-      fetch("gps.json").then(r => r.json())
-    ]);
-    photos = p.filter(x => !discarded.includes(x.name));
-    gpsData = g.filter(x => !discarded.includes(x.name.replace(".jpg", ".txt")));
-    index = 0;
-    showItem();
-  } catch (e) {
-    console.error(e);
+/* ====== MAP ====== */
+const map = L.map("map").setView([25.3131, 55.4910], 16);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19}).addTo(map);
+let marker = L.marker([25.3131, 55.4910]).addTo(map);
+
+/* ====== LOAD DATA ====== */
+async function loadAll() {
+  const [p, g] = await Promise.all([
+    fetch("photos.json").then(r => r.json()),
+    fetch("gps.json").then(r => r.json())
+  ]);
+
+  // Filter out discarded items
+  const isKept = (name) => !discarded.has(name);
+  photos = p.filter(x => isKept(x.name));
+  gps    = g.filter(x => isKept(x.name.replace(".txt",".jpg"))); // keep aligned
+
+  // Sort by name (timestamp-based name expected)
+  photos.sort((a,b)=> a.name.localeCompare(b.name));
+  gps.sort((a,b)=> a.name.localeCompare(b.name));
+
+  idx = Math.min(idx, Math.max(photos.length-1, 0));
+  render();
+}
+
+/* ====== HELPERS ====== */
+function basenameNoExt(name){
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(0,dot) : name;
+}
+function fmtFromKey(key){
+  // key looks like 2025-10-15_13-13-09 or 2025-10-15|13-13-09
+  const d = key.slice(0,10);
+  const t = key.slice(-8).replaceAll("-",":");
+  return {date:d, time:t};
+}
+function findGpsFor(photoName){
+  const key = basenameNoExt(photoName);
+  return gps.find(g => basenameNoExt(g.name) === key);
+}
+
+/* ====== RENDER ====== */
+function render(){
+  const total = photos.length;
+  if (total === 0){
+    imgTitle.textContent = "Images";
+    photoEl.src = "";
+    photoEl.alt = "No images available";
+    dateEl.textContent = "Date: —";
+    timeEl.textContent = "Time: —";
+    pairEl.textContent = "Pair 0 of 0";
+    gpsCount.textContent = "0 items";
+    gpsCoord.textContent = "—";
+    marker.setLatLng([25.3131,55.4910]);
+    map.setView([25.3131,55.4910], 15);
+    return;
+  }
+
+  const cur = photos[idx];
+  imgTitle.textContent = cur.name;
+  photoEl.src = cur.url;
+  photoEl.alt = cur.name;
+
+  const {date,time} = fmtFromKey(basenameNoExt(cur.name));
+  dateEl.textContent = "Date: " + date;
+  timeEl.textContent = "Time: " + time;
+  pairEl.textContent = `Pair ${idx+1} of ${total}`;
+
+  // GPS
+  const g = findGpsFor(cur.name);
+  if (g){
+    gpsCoord.textContent = `${g.lat.toFixed(6)}, ${g.lng.toFixed(6)}`;
+    gpsCount.textContent = `${gps.length} items`;
+    marker.setLatLng([g.lat,g.lng]);
+    map.setView([g.lat,g.lng], 17);
+  }else{
+    gpsCoord.textContent = "GPS error";
+    gpsCount.textContent = `${gps.length} items`;
   }
 }
 
-function showItem() {
-  if (photos.length === 0) {
-    photoEl.src = "";
-    photoEl.alt = "No Images Available";
-    counterEl.textContent = "0 of 0";
-    gpsInfoEl.textContent = "";
-    return;
-  }
-  const item = photos[index];
-  photoEl.src = item.url;
-  counterEl.textContent = `${index + 1} of ${photos.length}`;
-  const gps = gpsData.find(x => x.name.replace(".txt", "") === item.name.replace(".jpg", ""));
-  if (gps) {
-    gpsInfoEl.textContent = `Lat: ${gps.lat.toFixed(6)}, Lng: ${gps.lng.toFixed(6)}`;
-    if (window.mapMarker) map.removeLayer(window.mapMarker);
-    window.ma
+/* ====== EVENTS ====== */
+document.getElementById("nextBtn").onclick = () => {
+  if (!photos.length) return;
+  idx = (idx + 1) % photos.length;
+  render();
+};
+document.getElementById("prevBtn").onclick = () => {
+  if (!photos.length) return;
+  idx = (idx - 1 + photos.length) % photos.length;
+  render();
+};
+document.getElementById("refreshBtn").onclick = () => {
+  // Keep the same idx if possible; reload and re-filter
+  loadAll().catch(console.error);
+};
+document.getElementById("discardBtn").onclick = () => {
+  if (!photos.length) return;
+  const current = photos[idx].name;
+
+  // Persist as discarded
+  discarded.add(current);
+  localStorage.setItem("discarded", JSON.stringify([...discarded]));
+
+  // Remove from active sets immediately
+  photos.splice(idx,1);
+  const key = basenameNoExt(current);
+  const gi = gps.findIndex(g => basenameNoExt(g.name) === key);
+  if (gi>=0) gps.splice(gi,1);
+
+  if (idx >= photos.length) idx = 0;
+  render();
+};
+
+// Keyboard arrows
+window.addEventListener("keydown", (e)=>{
+  if (e.key === "ArrowRight") document.getElementById("nextBtn").click();
+  if (e.key === "ArrowLeft")  document.getElementById("prevBtn").click();
+});
+
+/* ====== BOOT ====== */
+loadAll().catch(console.error);
+</script>
+</body>
+</html>
