@@ -1,117 +1,174 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Drone Dashboard</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
   <style>
-    body{margin:0;font-family:'Segoe UI',Tahoma,sans-serif;background:#111;color:#fff;}
+    body{margin:0;font-family:'Segoe UI',Tahoma,sans-serif;background:#111;color:#fff}
     header{background:#000;padding:15px 30px;font-size:20px;font-weight:bold;
-      display:flex;justify-content:space-between;align-items:center;}
-    .wrap{padding:28px;display:flex;justify-content:center;}
-    .violations{width:min(1200px,100%);background:#1e1e1e;border-radius:14px;
-      padding:18px;box-shadow:0 0 18px rgba(0,0,0,.35);}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-    @media(max-width:980px){.grid{grid-template-columns:1fr;}}
-    .pane{background:#151515;border-radius:10px;padding:14px;}
-    #map{height:260px;border-radius:10px;margin-top:6px;}
-    .controls{display:flex;align-items:center;justify-content:center;gap:10px;margin:16px 6px;}
-    .control-btn{background:#333;color:#fff;border:1px solid #444;padding:10px 18px;
-      border-radius:8px;cursor:pointer;}
+      display:flex;justify-content:space-between;align-items:center}
+    .wrap{padding:28px;display:flex;justify-content:center}
+    .card{width:min(1200px,100%);background:#1e1e1e;border-radius:14px;padding:18px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    @media(max-width:980px){.grid{grid-template-columns:1fr}}
+    .pane{background:#151515;border-radius:10px;padding:14px}
+    .feed{height:360px;background:#0f0f0f;border-radius:10px;display:flex;
+      align-items:center;justify-content:center;overflow:hidden}
+    #feedImg{max-width:100%;max-height:100%;display:none;border-radius:10px}
+    #map{height:260px;border-radius:10px;margin-top:8px}
+    .controls{display:flex;gap:10px;justify-content:center;margin-top:16px}
+    .btn{background:#333;border:1px solid #444;color:#fff;padding:10px 16px;
+      border-radius:8px;cursor:pointer}
+    .btn-danger{background:#b21c1c;border-color:#b21c1c}
+    .meta{font-family:monospace;margin-top:8px;color:#bbb}
   </style>
 </head>
 <body>
 <header>
   <div>DRONE SURVEILLANCE DASHBOARD</div>
-  <div id="connectionStatus" style="color:#4CAF50;">OPERATIONAL</div>
+  <div id="connectionStatus" style="color:#4CAF50">OPERATIONAL</div>
 </header>
 
 <div class="wrap">
-  <section class="violations">
+  <section class="card">
     <div class="grid">
       <div class="pane">
-        <h3>Latest Image</h3>
-        <div id="feedPlaceholder" style="text-align:center;color:#bbb;">Loading…</div>
-        <img id="feedImg" style="width:100%;display:none;border-radius:10px;"/>
+        <h3>Image</h3>
+        <div id="feed" class="feed"><div id="feedPH" style="color:#aaa">Loading…</div>
+          <img id="feedImg" alt="photo"/>
+        </div>
+        <div class="meta"><span id="fileName">--</span></div>
       </div>
       <div class="pane">
-        <h3>GPS Coordinates</h3>
+        <h3>GPS</h3>
         <div id="map"></div>
-        <div id="coordInfo" style="margin-top:10px;font-family:monospace;"></div>
+        <div class="meta" id="coordInfo">Lat: --, Lon: -- (timestamp: --)</div>
       </div>
     </div>
+
     <div class="controls">
-      <button class="control-btn" id="prevBtn">Previous</button>
-      <button class="control-btn" id="refreshBtn">Refresh</button>
-      <button class="control-btn" id="nextBtn">Next</button>
-      <button class="control-btn" id="discardBtn" style="background:#b21c1c;">Discard</button>
+      <button class="btn" id="prevBtn">Previous</button>
+      <button class="btn" id="refreshBtn">Refresh</button>
+      <button class="btn" id="nextBtn">Next</button>
+      <!-- Single required button -->
+      <button class="btn btn-danger" id="discardBtn">Discard</button>
     </div>
   </section>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script>
-let pairs = [], currentPairIndex = 0;
-const feedImg = document.getElementById("feedImg");
-const feedPlaceholder = document.getElementById("feedPlaceholder");
-const coordInfo = document.getElementById("coordInfo");
+let pairs = [];
+let currentPairIndex = 0;
+
+// Map
 const map = L.map("map").setView([0,0], 2);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
- {attribution:"© OpenStreetMap"}).addTo(map);
+  { attribution:"© OpenStreetMap" }).addTo(map);
 const marker = L.marker([0,0]).addTo(map);
 
-async function loadData() {
-  const [photosRes, gpsRes] = await Promise.all([
-    fetch("/repo/photos"), fetch("/repo/gps")
-  ]);
-  const photos = (await photosRes.json()).photos || [];
-  const gps = (await gpsRes.json()).gps || [];
+// DOM
+const feedImg = document.getElementById("feedImg");
+const feedPH  = document.getElementById("feedPH");
+const fileNameEl = document.getElementById("fileName");
+const coordInfoEl = document.getElementById("coordInfo");
 
+// Load repo data via Flask (private)
+async function fetchJSON(url){
+  const r = await fetch(url, {cache:"no-store"});
+  if(!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function loadData(){
+  const [ph, gp] = await Promise.all([
+    fetchJSON("/repo/photos"),
+    fetchJSON("/repo/gps")
+  ]);
+  const photos = ph.photos || [];
+  const gps = gp.gps || [];
+
+  // exact-key pairing (same timestamp name)
+  const byKeyPhoto = new Map(photos.map(p => [p.key, p]));
   pairs = [];
-  for (const g of gps) {
-    const match = photos.find(p => p.key === g.key);
-    if (match) pairs.push({ photo: match, gps: g });
+  for(const g of gps){
+    const p = byKeyPhoto.get(g.key);
+    if(p) pairs.push({photo:p, gps:g});
   }
-  if (!pairs.length) {
-    feedPlaceholder.textContent = "No data found.";
+  // sort ascending by timestamp-like key; newest will be last
+  pairs.sort((a,b)=>a.photo.key.localeCompare(b.photo.key));
+
+  if(!pairs.length){
+    feedPH.textContent = "No pairs found";
+    feedImg.style.display="none";
+    coordInfoEl.textContent = "Lat: --, Lon: -- (timestamp: --)";
     return;
   }
-  pairs.sort((a,b)=>a.photo.key.localeCompare(b.photo.key));
-  currentPairIndex = pairs.length - 1; // most recent
-  showPair(currentPairIndex);
+  // show MOST RECENT by default
+  currentPairIndex = pairs.length - 1;
+  await showPair(currentPairIndex);
 }
 
 async function showPair(i){
-  if(i<0 || i>=pairs.length)return;
+  if(i<0 || i>=pairs.length) return;
   const pair = pairs[i];
-  feedImg.src = pair.photo.download_url;
-  feedImg.style.display = "block";
-  feedPlaceholder.style.display = "none";
-  coordInfo.textContent = `Lat: ${pair.gps.lat}, Lon: ${pair.gps.lon} (${pair.photo.key})`;
+  // image
+  const url = pair.photo.download_url + "?" + Date.now();
+  feedImg.onload = ()=>{ feedImg.style.display="block"; feedPH.style.display="none"; };
+  feedImg.onerror = ()=>{ feedPH.textContent="Error loading image"; feedPH.style.display="block"; feedImg.style.display="none"; };
+  feedImg.src = url;
+  fileNameEl.textContent = pair.photo.name;
+  // gps/map
+  coordInfoEl.textContent = `Lat: ${pair.gps.lat.toFixed(6)}, Lon: ${pair.gps.lon.toFixed(6)} (timestamp: ${pair.photo.key})`;
   map.setView([pair.gps.lat, pair.gps.lon], 15);
   marker.setLatLng([pair.gps.lat, pair.gps.lon]);
 }
 
-document.getElementById("nextBtn").onclick = ()=>{ if(currentPairIndex<pairs.length-1){ currentPairIndex++; showPair(currentPairIndex);} };
-document.getElementById("prevBtn").onclick = ()=>{ if(currentPairIndex>0){ currentPairIndex--; showPair(currentPairIndex);} };
+// Controls
+document.getElementById("nextBtn").onclick = ()=>{
+  if(currentPairIndex<pairs.length-1){ currentPairIndex++; showPair(currentPairIndex); }
+};
+document.getElementById("prevBtn").onclick = ()=>{
+  if(currentPairIndex>0){ currentPairIndex--; showPair(currentPairIndex); }
+};
 document.getElementById("refreshBtn").onclick = loadData;
 
+// Single Discard button: deletes BOTH photo and GPS via /discard_pair?key=...
 document.getElementById("discardBtn").onclick = async ()=>{
-  if(!pairs.length) return alert("No photo to discard.");
-  const pair = pairs[currentPairIndex];
-  if(!pair.photo) return alert("No photo found for this pair.");
-  if(!confirm(`Discard ${pair.photo.name}?`)) return;
-  const resp = await fetch(`/discard?path=photos/${pair.photo.name}`, { method:"DELETE" });
-  const data = await resp.json();
-  if(data.ok){
-    alert("Photo discarded successfully!");
+  if(!pairs.length) return alert("Nothing to discard.");
+  const key = pairs[currentPairIndex].photo.key;
+  if(!confirm(`Discard photo and GPS for ${key}?`)) return;
+  try{
+    const r = await fetch(`/discard_pair?key=${encodeURIComponent(key)}`, { method:"DELETE" });
+    const j = await r.json();
+    if(!r.ok || !j.ok){
+      alert("Failed to discard: " + (j.error || r.statusText));
+      return;
+    }
+    // reload and snap to newest item again
     await loadData();
-  } else {
-    alert("Error: " + (data.error || resp.statusText));
+    if(pairs.length){ currentPairIndex = pairs.length - 1; await showPair(currentPairIndex); }
+    else{
+      feedPH.textContent = "No pairs found";
+      feedPH.style.display="block";
+      feedImg.style.display="none";
+      coordInfoEl.textContent = "Lat: --, Lon: -- (timestamp: --)";
+    }
+  }catch(e){
+    alert("Error: " + e.message);
   }
 };
 
+// Keyboard shortcuts
+window.addEventListener("keydown", e=>{
+  if(e.key==="ArrowRight") document.getElementById("nextBtn").click();
+  if(e.key==="ArrowLeft")  document.getElementById("prevBtn").click();
+  if(e.key.toLowerCase()==="r") document.getElementById("refreshBtn").click();
+});
+
+// Init
 window.addEventListener("DOMContentLoaded", loadData);
 </script>
 </body>
