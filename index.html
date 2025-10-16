@@ -69,13 +69,19 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-/* ====== STATE ====== */
-let photos = [];      // [{name, url}]
-let gps = [];         // [{name, lat, lng}]
-let idx = 0;          // current index into photos[]
-let discarded = new Set(JSON.parse(localStorage.getItem("discarded") || "[]"));
+/* =========================
+   Strict photo–GPS pairing
+   ========================= */
 
-/* ====== ELEMENTS ====== */
+/* Expected JSON:
+   photos.json -> [{name:"2025-10-15_13-13-09.jpg", url:"photos/2025-10-15_13-13-09.jpg"}, ...]
+   gps.json    -> [{name:"2025-10-15_13-13-09.txt", lat:25.31311, lng:55.49100}, ...]
+*/
+
+let pairs = [];     // [{key, photoName, photoUrl, lat, lng}]
+let idx = 0;
+let discarded = new Set(JSON.parse(localStorage.getItem("discarded_keys") || "[]"));
+
 const imgTitle = document.getElementById("imgTitle");
 const photoEl  = document.getElementById("photo");
 const dateEl   = document.getElementById("dateMeta");
@@ -84,50 +90,63 @@ const pairEl   = document.getElementById("pairMeta");
 const gpsCount = document.getElementById("gpsCount");
 const gpsCoord = document.getElementById("gpsCoord");
 
-/* ====== MAP ====== */
 const map = L.map("map").setView([25.3131, 55.4910], 16);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19}).addTo(map);
 let marker = L.marker([25.3131, 55.4910]).addTo(map);
 
-/* ====== LOAD DATA ====== */
-async function loadAll() {
-  const [p, g] = await Promise.all([
-    fetch("photos.json").then(r => r.json()),
-    fetch("gps.json").then(r => r.json())
+function baseNoExt(name){
+  const b = name.replace(/^.*\//,"");
+  const dot = b.lastIndexOf(".");
+  return dot>0 ? b.slice(0,dot) : b;
+}
+
+function parseDateTimeFromKey(key){
+  // supports 2025-10-15_13-13-09 or 2025-10-15|13-13-09
+  const date = key.slice(0,10);
+  const time = key.slice(-8).replaceAll("-",":");
+  return {date, time};
+}
+
+async function loadAll(){
+  const [photos, gps] = await Promise.all([
+    fetch("photos.json").then(r=>r.json()),
+    fetch("gps.json").then(r=>r.json())
   ]);
 
-  // Filter out discarded items
-  const isKept = (name) => !discarded.has(name);
-  photos = p.filter(x => isKept(x.name));
-  gps    = g.filter(x => isKept(x.name.replace(".txt",".jpg"))); // keep aligned
+  // Build dictionaries keyed by basename
+  const P = new Map(); // key -> {photoName, url}
+  for (const p of photos){
+    P.set(baseNoExt(p.name), {photoName:p.name, url:p.url});
+  }
+  const G = new Map(); // key -> {lat,lng}
+  for (const g of gps){
+    G.set(baseNoExt(g.name), {lat:g.lat, lng:g.lng});
+  }
 
-  // Sort by name (timestamp-based name expected)
-  photos.sort((a,b)=> a.name.localeCompare(b.name));
-  gps.sort((a,b)=> a.name.localeCompare(b.name));
+  // Intersect keys (only items that exist in BOTH)
+  const keys = [];
+  for (const k of P.keys()){
+    if (G.has(k)) keys.push(k);
+  }
+  keys.sort(); // chronological if names are timestamps
 
-  idx = Math.min(idx, Math.max(photos.length-1, 0));
+  // Build pairs and filter discards
+  pairs = keys
+    .filter(k => !discarded.has(k))
+    .map(k => ({
+      key: k,
+      photoName: P.get(k).photoName,
+      photoUrl:  P.get(k).url,
+      lat: G.get(k).lat,
+      lng: G.get(k).lng
+    }));
+
+  idx = Math.min(idx, Math.max(pairs.length-1, 0));
   render();
 }
 
-/* ====== HELPERS ====== */
-function basenameNoExt(name){
-  const dot = name.lastIndexOf(".");
-  return dot > 0 ? name.slice(0,dot) : name;
-}
-function fmtFromKey(key){
-  // key looks like 2025-10-15_13-13-09 or 2025-10-15|13-13-09
-  const d = key.slice(0,10);
-  const t = key.slice(-8).replaceAll("-",":");
-  return {date:d, time:t};
-}
-function findGpsFor(photoName){
-  const key = basenameNoExt(photoName);
-  return gps.find(g => basenameNoExt(g.name) === key);
-}
-
-/* ====== RENDER ====== */
 function render(){
-  const total = photos.length;
+  const total = pairs.length;
   if (total === 0){
     imgTitle.textContent = "Images";
     photoEl.src = "";
@@ -141,70 +160,55 @@ function render(){
     map.setView([25.3131,55.4910], 15);
     return;
   }
+  const cur = pairs[idx];
+  imgTitle.textContent = cur.photoName;
+  photoEl.src = cur.photoUrl;
+  photoEl.alt = cur.photoName;
 
-  const cur = photos[idx];
-  imgTitle.textContent = cur.name;
-  photoEl.src = cur.url;
-  photoEl.alt = cur.name;
-
-  const {date,time} = fmtFromKey(basenameNoExt(cur.name));
+  const {date,time} = parseDateTimeFromKey(cur.key);
   dateEl.textContent = "Date: " + date;
   timeEl.textContent = "Time: " + time;
   pairEl.textContent = `Pair ${idx+1} of ${total}`;
 
-  // GPS
-  const g = findGpsFor(cur.name);
-  if (g){
-    gpsCoord.textContent = `${g.lat.toFixed(6)}, ${g.lng.toFixed(6)}`;
-    gpsCount.textContent = `${gps.length} items`;
-    marker.setLatLng([g.lat,g.lng]);
-    map.setView([g.lat,g.lng], 17);
-  }else{
-    gpsCoord.textContent = "GPS error";
-    gpsCount.textContent = `${gps.length} items`;
-  }
+  gpsCount.textContent = `${total} items`; // pairs count reflects synced items only
+  gpsCoord.textContent = `${cur.lat.toFixed(6)}, ${cur.lng.toFixed(6)}`;
+  marker.setLatLng([cur.lat,cur.lng]);
+  map.setView([cur.lat,cur.lng], 17);
 }
 
-/* ====== EVENTS ====== */
-document.getElementById("nextBtn").onclick = () => {
-  if (!photos.length) return;
-  idx = (idx + 1) % photos.length;
+/* Controls */
+document.getElementById("nextBtn").onclick = ()=>{
+  if (!pairs.length) return;
+  idx = (idx+1) % pairs.length;
   render();
 };
-document.getElementById("prevBtn").onclick = () => {
-  if (!photos.length) return;
-  idx = (idx - 1 + photos.length) % photos.length;
+document.getElementById("prevBtn").onclick = ()=>{
+  if (!pairs.length) return;
+  idx = (idx-1+pairs.length) % pairs.length;
   render();
 };
-document.getElementById("refreshBtn").onclick = () => {
-  // Keep the same idx if possible; reload and re-filter
+document.getElementById("refreshBtn").onclick = ()=>{
   loadAll().catch(console.error);
 };
-document.getElementById("discardBtn").onclick = () => {
-  if (!photos.length) return;
-  const current = photos[idx].name;
+document.getElementById("discardBtn").onclick = ()=>{
+  if (!pairs.length) return;
+  const key = pairs[idx].key;
 
-  // Persist as discarded
-  discarded.add(current);
-  localStorage.setItem("discarded", JSON.stringify([...discarded]));
+  discarded.add(key);
+  localStorage.setItem("discarded_keys", JSON.stringify([...discarded]));
 
-  // Remove from active sets immediately
-  photos.splice(idx,1);
-  const key = basenameNoExt(current);
-  const gi = gps.findIndex(g => basenameNoExt(g.name) === key);
-  if (gi>=0) gps.splice(gi,1);
-
-  if (idx >= photos.length) idx = 0;
+  pairs.splice(idx,1);
+  if (idx >= pairs.length) idx = 0;
   render();
 };
 
-// Keyboard arrows
-window.addEventListener("keydown", (e)=>{
+// keyboard arrows
+window.addEventListener("keydown",(e)=>{
   if (e.key === "ArrowRight") document.getElementById("nextBtn").click();
   if (e.key === "ArrowLeft")  document.getElementById("prevBtn").click();
 });
 
-/* ====== BOOT ====== */
+/* Boot */
 loadAll().catch(console.error);
 </script>
 </body>
