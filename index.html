@@ -28,6 +28,7 @@
   .feed{height:360px;display:flex;align-items:center;justify-content:center;background:#0f1012}
   #photo{max-width:100%;max-height:100%;object-fit:contain}
   #map{height:360px}
+  .foot{padding:6px 12px;font-size:11px;color:#7c7c7c}
 </style>
 </head>
 <body>
@@ -53,6 +54,7 @@
         <button class="btn" id="nextBtn">Next</button>
         <button class="btn danger" id="discardBtn">Discard</button>
       </div>
+      <div class="foot" id="dbg"></div>
     </div>
 
     <!-- GPS -->
@@ -69,14 +71,13 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-/* =========================
-   Strict photo–GPS pairing
-   ========================= */
-
-/* Expected JSON:
-   photos.json -> [{name:"2025-10-15_13-13-09.jpg", url:"photos/2025-10-15_13-13-09.jpg"}, ...]
-   gps.json    -> [{name:"2025-10-15_13-13-09.txt", lat:25.31311, lng:55.49100}, ...]
-*/
+/* =============================
+   STRICT filename pairing (Pages)
+   - Uses photos.json only
+   - For each photo key, GET GPS/<key>.txt
+   - Keep only pairs where GPS exists + parses
+   - Discard hides by key (localStorage)
+   ============================= */
 
 let pairs = [];     // [{key, photoName, photoUrl, lat, lng}]
 let idx = 0;
@@ -89,6 +90,7 @@ const timeEl   = document.getElementById("timeMeta");
 const pairEl   = document.getElementById("pairMeta");
 const gpsCount = document.getElementById("gpsCount");
 const gpsCoord = document.getElementById("gpsCoord");
+const dbgEl    = document.getElementById("dbg");
 
 const map = L.map("map").setView([25.3131, 55.4910], 16);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19}).addTo(map);
@@ -101,47 +103,84 @@ function baseNoExt(name){
 }
 
 function parseDateTimeFromKey(key){
-  // supports 2025-10-15_13-13-09 or 2025-10-15|13-13-09
+  // supports 2025-10-12_14-34-39 or 2025-10-12|14-34-39
   const date = key.slice(0,10);
   const time = key.slice(-8).replaceAll("-",":");
   return {date, time};
 }
 
+function parseLatLonFromText(text){
+  // Try: lat: 25.31311 lon: 55.49100  OR "25.31311, 55.49100"  OR first two floats
+  let m = text.match(/lat\D*(-?\d+(?:\.\d+)?)\D*lon\D*(-?\d+(?:\.\d+)?)/i);
+  if (!m) m = text.match(/(-?\d+(?:\.\d+)?)\D*,\D*(-?\d+(?:\.\d+)?)/);
+  if (!m) {
+    const all = [...text.matchAll(/-?\d+(?:\.\d+)?/g)].map(x=>parseFloat(x[0]));
+    if (all.length>=2) m = [null, all[0], all[1]];
+  }
+  if (!m) return null;
+  const lat = parseFloat(m[1]), lng = parseFloat(m[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat)>90 || Math.abs(lng)>180) return null;
+  return {lat, lng};
+}
+
+async function fetchGpsForKey(key){
+  // Try same-origin first (Pages): GPS/<key>.txt
+  // If you serve under a subfolder, this relative path still works.
+  const url = `GPS/${key}.txt?ts=${Date.now()}`;
+  const r = await fetch(url);
+  if (!r.ok) return null;
+  const text = await r.text();
+  const coords = parseLatLonFromText(text);
+  return coords;
+}
+
 async function loadAll(){
-  const [photos, gps] = await Promise.all([
-    fetch("photos.json").then(r=>r.json()),
-    fetch("gps.json").then(r=>r.json())
-  ]);
+  dbgEl.textContent = "loading…";
+  let photos = [];
+  try{
+    photos = await fetch("photos.json?ts="+Date.now()).then(r=>r.json());
+  }catch(e){
+    dbgEl.textContent = "photos.json load error";
+    console.error(e);
+    photos = [];
+  }
 
-  // Build dictionaries keyed by basename
-  const P = new Map(); // key -> {photoName, url}
+  // Build & pair by probing GPS/<key>.txt
+  const out = [];
+  let tested = 0, kept = 0, skipped = 0;
+
+  // Sort chronological by name
+  photos.sort((a,b)=>a.name.localeCompare(b.name));
+
   for (const p of photos){
-    P.set(baseNoExt(p.name), {photoName:p.name, url:p.url});
-  }
-  const G = new Map(); // key -> {lat,lng}
-  for (const g of gps){
-    G.set(baseNoExt(g.name), {lat:g.lat, lng:g.lng});
+    const key = baseNoExt(p.name);
+    if (discarded.has(key)) { skipped++; continue; }
+
+    tested++;
+    try{
+      const coords = await fetchGpsForKey(key);
+      if (coords){
+        out.push({
+          key,
+          photoName: p.name,
+          photoUrl:  p.url,
+          lat: coords.lat,
+          lng: coords.lng
+        });
+        kept++;
+      }else{
+        skipped++;
+      }
+    }catch(err){
+      console.warn("GPS fetch fail for", key, err);
+      skipped++;
+    }
   }
 
-  // Intersect keys (only items that exist in BOTH)
-  const keys = [];
-  for (const k of P.keys()){
-    if (G.has(k)) keys.push(k);
-  }
-  keys.sort(); // chronological if names are timestamps
-
-  // Build pairs and filter discards
-  pairs = keys
-    .filter(k => !discarded.has(k))
-    .map(k => ({
-      key: k,
-      photoName: P.get(k).photoName,
-      photoUrl:  P.get(k).url,
-      lat: G.get(k).lat,
-      lng: G.get(k).lng
-    }));
-
+  pairs = out;
   idx = Math.min(idx, Math.max(pairs.length-1, 0));
+  dbgEl.textContent = `dbg: photos=${photos.length} tested=${tested} kept=${kept} skipped=${skipped} hidden=${discarded.size}`;
   render();
 }
 
@@ -155,7 +194,7 @@ function render(){
     timeEl.textContent = "Time: —";
     pairEl.textContent = "Pair 0 of 0";
     gpsCount.textContent = "0 items";
-    gpsCoord.textContent = "—";
+    gpsCoord.textContent = "GPS error";
     marker.setLatLng([25.3131,55.4910]);
     map.setView([25.3131,55.4910], 15);
     return;
@@ -170,7 +209,7 @@ function render(){
   timeEl.textContent = "Time: " + time;
   pairEl.textContent = `Pair ${idx+1} of ${total}`;
 
-  gpsCount.textContent = `${total} items`; // pairs count reflects synced items only
+  gpsCount.textContent = `${total} items`; // count of valid synced pairs
   gpsCoord.textContent = `${cur.lat.toFixed(6)}, ${cur.lng.toFixed(6)}`;
   marker.setLatLng([cur.lat,cur.lng]);
   map.setView([cur.lat,cur.lng], 17);
