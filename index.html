@@ -18,9 +18,7 @@ header{display:flex;justify-content:space-between;align-items:center;padding:12p
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1200px;margin:0 auto}
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px}
 .hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-.feed{height:360px;background:#0c0c0c;border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
-.feed.newflash{box-shadow:0 0 0 3px var(--accent) inset;animation:flash 1s ease 2}
-@keyframes flash{0%{box-shadow:0 0 0 0 var(--accent) inset}50%{box-shadow:0 0 0 6px var(--accent) inset}100%{box-shadow:0 0 0 0 var(--accent) inset}}
+.feed{height:360px;background:#0c0c0c;border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .feed img{max-width:100%;max-height:100%;display:none}
 #map{height:260px;border-radius:10px}
 .list{margin-top:8px;max-height:170px;overflow:auto;background:var(--chip);border:1px solid var(--border);border-radius:8px;padding:6px;font-family:monospace}
@@ -29,26 +27,21 @@ header{display:flex;justify-content:space-between;align-items:center;padding:12p
 .badge{font-size:12px;color:#fff;background:var(--danger);padding:3px 6px;border-radius:6px}
 .note{max-width:1200px;margin:10px auto 0;color:var(--muted);font-size:12px}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.toggles{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.chk{display:flex;gap:6px;align-items:center;font-size:12px;background:var(--sub);border:1px solid var(--border);padding:6px 10px;border-radius:8px}
 @media (max-width:980px){.grid{grid-template-columns:1fr}}
 
-/* --- Popup (Dismiss / Display) --- */
-#alertBackdrop{
-  position:fixed; inset:0; display:none; align-items:center; justify-content:center;
-  background:rgba(0,0,0,.55); z-index:9999;
+/* bottom toast */
+#toast{
+  position:fixed; left:50%; transform:translateX(-50%);
+  bottom:18px; width:min(520px, 92%);
+  display:none; z-index:9999;
+  background:var(--card); border:1px solid var(--border); color:inherit;
+  border-radius:12px; padding:14px 16px; box-shadow:0 10px 40px rgba(0,0,0,.45);
 }
-#alertCard{
-  width:min(420px,94%); background:var(--card); color:inherit; border:1px solid var(--border);
-  border-radius:14px; padding:16px; box-shadow:0 12px 40px rgba(0,0,0,.45);
-}
-#alertTitle{font-weight:700; font-size:17px; margin:0 0 8px}
-#alertBody{font-size:14px; color:var(--muted); margin-bottom:14px}
-#alertActions{display:flex; gap:10px; justify-content:flex-end}
-.alert-btn{
-  padding:8px 14px; border-radius:10px; border:1px solid var(--border); cursor:pointer; background:var(--sub); color:inherit;
-}
-.alert-primary{ background:#184d2a; border-color:#1e6a39; color:#fff; }
+#toast h4{margin:0 0 6px; font-size:15px}
+#toast p{margin:0 0 10px; color:var(--muted); font-size:13px}
+.toast-actions{display:flex; gap:8px; justify-content:flex-end}
+.toast-btn{padding:7px 12px; border-radius:9px; border:1px solid var(--border); background:var(--sub); color:inherit; cursor:pointer}
+.toast-primary{background:#184d2a; border-color:#1f6d3c; color:#fff}
 </style>
 </head>
 <body>
@@ -63,23 +56,12 @@ header{display:flex;justify-content:space-between;align-items:center;padding:12p
 <div class="container">
   <div class="grid">
     <div class="card">
-      <div class="hdr">
-        <strong>IMAGES</strong>
-        <span id="fname" class="counter">—</span>
-      </div>
-      <div class="feed" id="feedBox">
-        <img id="feedImg" alt="">
-        <span id="imgErr" style="color:#aaa">Loading…</span>
-      </div>
+      <div class="hdr"><strong>IMAGES</strong><span id="fname" class="counter">—</span></div>
+      <div class="feed"><img id="feedImg" alt=""><span id="imgErr" style="color:#aaa">Loading…</span></div>
       <div class="row" style="margin-top:6px">
         <span class="counter" id="dateTxt">Date: —</span>
         <span class="counter" id="timeTxt">Time: —</span>
         <span class="counter" id="pairCounter">Pair 0 of 0</span>
-      </div>
-      <div class="toggles" style="margin-top:8px">
-        <label class="chk"><input type="checkbox" id="autoJump"> Auto-jump to newest</label>
-        <label class="chk"><input type="checkbox" id="notifChk"> 🔔 Notify on new</label>
-        <span class="counter" id="notifState">Notifications: off</span>
       </div>
     </div>
 
@@ -110,38 +92,29 @@ header{display:flex;justify-content:space-between;align-items:center;padding:12p
   <div class="note" id="dbg">dbg: —</div>
 </div>
 
-<!-- Popup -->
-<div id="alertBackdrop">
-  <div id="alertCard">
-    <div id="alertTitle">A new possible violation detected</div>
-    <div id="alertBody">A new image+GPS pair has arrived. Would you like to display it now?</div>
-    <div id="alertActions">
-      <button id="btnDismiss" class="alert-btn">Dismiss</button>
-      <button id="btnDisplay" class="alert-btn alert-primary">Display</button>
-    </div>
+<!-- bottom toast -->
+<div id="toast">
+  <h4>A new possible violation detected</h4>
+  <p>A new image+GPS pair has arrived.</p>
+  <div class="toast-actions">
+    <button id="toastDismiss" class="toast-btn">Dismiss</button>
+    <button id="toastDisplay" class="toast-btn toast-primary">Display</button>
   </div>
 </div>
-
-<!-- tiny beep (optional) -->
-<audio id="beep" preload="auto">
-  <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAAABAAAAPwAAAFsAAABSU0MM" type="audio/wav">
-</audio>
 
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 <script>
-/* ===== Config ===== */
-const POLL_MS = 30000;        // check every 30s
-const MAX_DELTA_MS = 60000;   // pair window
+/* ===== CONFIG ===== */
+const OWNER="Fatma-Alhosani", REPO="drone-dashboard", BRANCH="main";
+const POLL_MS=15000, MAX_DELTA_MS=60000; // 15s poll
+/* ================== */
 
-/* ===== State ===== */
 let photos=[], gps=[], pairs=[], visiblePairs=[], idx=0;
 let hiddenKeys = new Set(JSON.parse(localStorage.getItem("hidden_keys_v1") || "[]"));
-let lastVisibleCount = 0;
-let lastLatestTsMs = 0;
-let pendingNewIndex = null; // where "Display" should jump
+let lastSeenLatestTs = Number(localStorage.getItem("last_seen_latest_ts_v2") || "0");
+let firstLoadDone = false;         // to suppress toast on the first successful load
 
-/* ===== DOM ===== */
 const imgEl=document.getElementById('feedImg');
 const imgErr=document.getElementById('imgErr');
 const fname=document.getElementById('fname');
@@ -152,179 +125,185 @@ const gpsCount=document.getElementById('gpsCount');
 const coordBadge=document.getElementById('coordBadge');
 const gpsList=document.getElementById('gpsList');
 const dbg=document.getElementById('dbg');
-const feedBox=document.getElementById('feedBox');
-const autoJump=document.getElementById('autoJump');
-const notifChk=document.getElementById('notifChk');
-const notifState=document.getElementById('notifState');
-const beep=document.getElementById('beep');
+const toast=document.getElementById('toast');
+const toastDismiss=document.getElementById('toastDismiss');
+const toastDisplay=document.getElementById('toastDisplay');
 
-const alertBackdrop = document.getElementById('alertBackdrop');
-const btnDismiss    = document.getElementById('btnDismiss');
-const btnDisplay    = document.getElementById('btnDisplay');
-
-/* ===== Map ===== */
 const map=L.map('map').setView([0,0],2);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap"}).addTo(map);
 const marker=L.marker([0,0]).addTo(map);
 
-/* ===== Utils ===== */
 function saveHidden(){localStorage.setItem("hidden_keys_v1",JSON.stringify([...hiddenKeys]));}
-function tsToParts(key){
-  const m=key.match(/^(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})$/);
-  return m?{date:m[1],time:`${m[2]}:${m[3]}:${m[4]}`}:{date:"—",time:"—"};
+function tsToParts(key){const m=key.match(/^(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})$/);return m?{date:m[1],time:`${m[2]}:${m[3]}:${m[4]}`}:{date:"—",time:"—"};}
+function parseTsMs(key){
+  const m=key.match(/^(\d{4}-\d{2}-\d{2})[|_](\d{2})-(\d{2})-(\d{2})$/) || key.match(/^(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})$/);
+  if(!m) return null;
+  const d=new Date(Date.UTC(+m[1].slice(0,4), +m[1].slice(5,7)-1, +m[1].slice(8,10), +m[2], +m[3], +m[4]));
+  return d.getTime();
 }
-async function loadJSON(path){
-  const r=await fetch(path+'?t='+Date.now());
-  if(!r.ok)throw new Error(`get ${path} failed: ${r.status}`);
+
+async function ghList(path){
+  const url=`https://api.github.com/repos/${OWNER}/${REPO}/contents/${path}?ref=${BRANCH}&t=${Date.now()}`;
+  const r=await fetch(url); if(!r.ok) throw new Error(`list ${path} failed: ${r.status}`);
   return r.json();
 }
+async function ghGetText(path){
+  const url=`https://api.github.com/repos/${OWNER}/${REPO}/contents/${path}?ref=${BRANCH}&t=${Date.now()}`;
+  const r=await fetch(url); if(!r.ok) throw new Error(`get ${path} failed: ${r.status}`);
+  const j=await r.json();
+  return atob(j.content || "");
+}
+function parseCoords(text){
+  let m=text.match(/lat\D*(-?\d+(?:\.\d+)?)\D*lon\D*(-?\d+(?:\.\d+)?)/i) || text.match(/(-?\d+(?:\.\d+)?)\D*,\D*(-?\d+(?:\.\d+)?)/);
+  if(!m){const nums=Array.from(text.matchAll(/-?\d+(?:\.\d+)?/g)).map(x=>x[0]); if(nums.length>=2) m=[,nums[0],nums[1]];}
+  if(!m) return null;
+  const lat=+m[1], lon=+m[2]; if(!isFinite(lat)||!isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180) return null;
+  return {lat,lon};
+}
 
-/* ===== Popup control ===== */
-function showNewAlert(latestIdx){
-  pendingNewIndex = latestIdx;     // store where to jump if "Display"
-  alertBackdrop.style.display = 'flex';
-}
-function hideNewAlert(){
-  alertBackdrop.style.display = 'none';
-  pendingNewIndex = null;
-}
-btnDismiss.onclick = ()=>{ hideNewAlert(); /* stay on current idx */ };
-btnDisplay.onclick = ()=>{
-  if (pendingNewIndex != null) {
-    idx = Math.max(0, Math.min(pendingNewIndex, visiblePairs.length-1));
-    show();
+async function loadRepo(){
+  // Photos
+  const pItems=(await ghList("photos")).filter(x=>x.type==="file" && /\.(jpg|jpeg|png|webp)$/i.test(x.name));
+  photos=pItems.map(it=>{
+    const key=it.name.replace(/\.[^.]+$/,""); const ts=parseTsMs(key);
+    return ts?{name:it.name,key,tsMs:ts,url:it.download_url}:null;
+  }).filter(Boolean).filter(p=>!hiddenKeys.has(p.key)).sort((a,b)=>a.tsMs-b.tsMs);
+
+  // GPS
+  const gItems=(await ghList("GPS")).filter(x=>x.type==="file" && /\.txt$/i.test(x.name));
+  const rows=[];
+  for(const it of gItems){
+    const key=it.name.replace(/\.[^.]+$/,""); const ts=parseTsMs(key); if(!ts) continue;
+    const text=await ghGetText(`GPS/${it.name}`); const c=parseCoords(text); if(!c) continue;
+    rows.push({key,tsMs:ts,lat:c.lat,lon:c.lon,path:`GPS/${it.name}`});
   }
-  hideNewAlert();
-};
+  gps=rows.filter(r=>!hiddenKeys.has(r.key)).sort((a,b)=>a.tsMs-b.tsMs);
+}
 
-/* ===== Data reload & pairing ===== */
-async function reload(){
+function buildPairs(){
+  pairs=[]; if(!photos.length||!gps.length) return;
+  let p=0;
+  for(const g of gps){
+    while(p+1<photos.length && photos[p+1].tsMs<=g.tsMs) p++;
+    const cand=[p]; if(p>0)cand.push(p-1);
+    let best=-1, diff=1e15;
+    for(const i of cand){const d=Math.abs(photos[i].tsMs-g.tsMs); if(d<diff){diff=d; best=i;}}
+    if(best>=0 && diff<=MAX_DELTA_MS) pairs.push({gps:g, photo:photos[best]});
+  }
+  visiblePairs=pairs.filter(pr=>!hiddenKeys.has(pr.photo.key));
+  if(!firstLoadDone){ idx=visiblePairs.length?visiblePairs.length-1:0; }
+}
+
+function updateCounters(){
+  pairCounter.textContent=`Pair ${visiblePairs.length?(idx+1):0} of ${visiblePairs.length}`;
+  gpsCount.textContent=`${gps.length} items`;
+}
+function show(){
+  if(!visiblePairs.length){
+    imgEl.style.display='none'; imgErr.style.display='block'; imgErr.textContent='No visible pairs';
+    fname.textContent='—'; dateTxt.textContent='Date: —'; timeTxt.textContent='Time: —'; coordBadge.textContent='—, —';
+    gpsList.innerHTML=''; updateCounters(); return;
+  }
+  const pr=visiblePairs[idx];
+  imgEl.src=pr.photo.url;
+  imgEl.onload=()=>{imgEl.style.display='block';imgErr.style.display='none';};
+  imgEl.onerror=()=>{imgEl.style.display='none';imgErr.style.display='block';imgErr.textContent='Image error';};
+  fname.textContent=pr.photo.name;
+  const parts=tsToParts(pr.photo.key); dateTxt.textContent='Date: '+parts.date; timeTxt.textContent='Time: '+parts.time;
+  coordBadge.textContent=`${pr.gps.lat.toFixed(5)}, ${pr.gps.lon.toFixed(5)}`;
+  map.setView([pr.gps.lat,pr.gps.lon],16); marker.setLatLng([pr.gps.lat,pr.gps.lon]);
+  gpsList.innerHTML=''; for(const r of gps){ const el=document.createElement('div'); el.textContent=`${r.lat.toFixed(5)}, ${r.lon.toFixed(5)} [${r.key}]`; if(r.key===pr.gps.key){el.style.fontWeight='bold'; el.style.background='#242424';} gpsList.appendChild(el); }
+  updateCounters();
+}
+
+/* --- toast helpers --- */
+function showToast(){ toast.style.display='block'; }
+function hideToast(){ toast.style.display='none'; }
+
+/* main reload (with real “new pair” detection) */
+async function reload(triggeredByTimer=false){
   try{
-    const p = (await loadJSON('photos.json')).filter(x=>Number.isFinite(x.tsMs) && !hiddenKeys.has(x.key)).sort((a,b)=>a.tsMs-b.tsMs);
-    const g = (await loadJSON('gps.json')).filter(x=>Number.isFinite(x.tsMs) && !hiddenKeys.has(x.key)).sort((a,b)=>a.tsMs-b.tsMs);
-
-    photos=p; gps=g;
+    await loadRepo();
     buildPairs();
 
-    const curCount = visiblePairs.length;
-    const curLatest = curCount ? visiblePairs[visiblePairs.length-1].photo.tsMs : 0;
-    const gotMore = curCount > lastVisibleCount || curLatest > lastLatestTsMs;
+    // compute newest pair ts
+    const latestTs = visiblePairs.length ? visiblePairs[visiblePairs.length-1].photo.tsMs : 0;
 
-    if (gotMore && curCount) {
-      const latestIdx = visiblePairs.length - 1;
-
-      // visual flash
-      feedBox.classList.add('newflash');
-      setTimeout(()=>feedBox.classList.remove('newflash'), 1200);
-
-      // optional sound/browser notif
-      if (notifChk.checked) { try{ beep.currentTime=0; beep.play().catch(()=>{});}catch{} }
-
-      // popup with Dismiss / Display
-      showNewAlert(latestIdx);
-
-      // if autoJump is ON and user ignores popup, still jump
-      if (autoJump.checked) {
-        idx = latestIdx;
+    // On FIRST successful load: set baseline, no popup
+    if(!firstLoadDone){
+      lastSeenLatestTs = latestTs;
+      localStorage.setItem("last_seen_latest_ts_v2", String(lastSeenLatestTs));
+      firstLoadDone = true;
+    }else{
+      // subsequent loads: popup ONLY if a genuinely newer pair exists
+      if(latestTs > lastSeenLatestTs){
+        // show toast once
+        showToast();
       }
     }
 
+    // keep showing current selection; if nothing, jump to newest
+    if(!visiblePairs.length){ idx=0; }
     show();
-    lastVisibleCount = curCount;
-    lastLatestTsMs = curLatest;
 
-    dbg.textContent=`dbg: ok | visiblePhotos=${photos.length} totalPairs=${pairs.length}`;
+    dbg.textContent=`dbg: ok | visiblePairs=${visiblePairs.length}`;
   }catch(e){
     dbg.textContent='dbg: '+e.message;
   }
 }
 
-function buildPairs(){
-  pairs=[];
-  if(!photos.length||!gps.length) { visiblePairs=[]; return; }
-  let p=0;
-  for(const g of gps){
-    while(p+1<photos.length && photos[p+1].tsMs<=g.tsMs) p++;
-    const cand=[p]; if(p>0)cand.push(p-1);
-    let best=-1,diff=1e12;
-    for(const i of cand){const d=Math.abs(photos[i].tsMs-g.tsMs); if(d<diff){diff=d; best=i;}}
-    if(best>=0 && diff<=MAX_DELTA_MS) pairs.push({gps:g,photo:photos[best]});
-  }
-  visiblePairs=pairs.filter(pr=>!hiddenKeys.has(pr.photo.key));
-  if (!visiblePairs.length) idx=0; else idx=Math.min(idx, visiblePairs.length-1);
-  updateCounters();
-}
+/* controls */
+document.getElementById('prevBtn').onclick=()=>{ if(idx>0){idx--;show();} };
+document.getElementById('nextBtn').onclick=()=>{ if(idx<visiblePairs.length-1){idx++;show();} };
+document.getElementById('refreshBtn').onclick=()=>reload(false);
 
-/* ===== UI ===== */
-function updateCounters(){
-  pairCounter.textContent=`Pair ${visiblePairs.length?(idx+1):0} of ${visiblePairs.length}`;
-  gpsCount.textContent=`${gps.length} items`;
-}
-
-function show(){
-  if(!visiblePairs.length){
-    imgEl.style.display='none'; imgErr.style.display='block'; imgErr.textContent='No visible pairs';
-    fname.textContent='—'; dateTxt.textContent='Date: —'; timeTxt.textContent='Time: —'; coordBadge.textContent='—, —';
-    gpsList.innerHTML=''; return;
-  }
-  const pr=visiblePairs[idx];
-  imgEl.src=pr.photo.url + "?cb=" + Date.now();
-  imgEl.onload=()=>{imgEl.style.display='block'; imgErr.style.display='none';};
-  imgEl.onerror=()=>{imgEl.style.display='none'; imgErr.style.display='block'; imgErr.textContent='Image error';};
-  fname.textContent=pr.photo.name;
-  const parts=tsToParts(pr.photo.key);
-  dateTxt.textContent='Date: '+parts.date;
-  timeTxt.textContent='Time: '+parts.time;
-  coordBadge.textContent=`${pr.gps.lat.toFixed(5)}, ${pr.gps.lon.toFixed(5)}`;
-  map.setView([pr.gps.lat,pr.gps.lon],16);
-  marker.setLatLng([pr.gps.lat,pr.gps.lon]);
-
-  gpsList.innerHTML='';
-  for(const r of gps){
-    const el=document.createElement('div');
-    el.textContent = `${r.lat.toFixed(5)}, ${r.lon.toFixed(5)} [${r.key}]`;
-    if(r.key===pr.gps.key){ el.style.fontWeight='bold'; el.style.background='#242424'; }
-    gpsList.appendChild(el);
-  }
-  updateCounters();
-}
-
-/* ===== Controls ===== */
-document.getElementById('prevBtn').onclick=()=>{if(idx>0){idx--;show();}};
-document.getElementById('nextBtn').onclick=()=>{if(idx<visiblePairs.length-1){idx++;show();}};
-document.getElementById('refreshBtn').onclick=reload;
 document.getElementById('discardBtn').onclick=()=>{
   if(!visiblePairs.length) return;
   const pr=visiblePairs[idx];
-  hiddenKeys.add(pr.photo.key);
-  saveHidden();
-  reload();
+  hiddenKeys.add(pr.photo.key); saveHidden();
+  // if we hide newest, also advance baseline if needed
+  const latestTs = visiblePairs.length ? visiblePairs[visiblePairs.length-1].photo.tsMs : 0;
+  if(latestTs > lastSeenLatestTs){ lastSeenLatestTs = latestTs; localStorage.setItem("last_seen_latest_ts_v2", String(lastSeenLatestTs)); }
+  reload(false);
 };
+
 document.getElementById('downloadBtn').onclick=()=>{
   const lines=['# Discard Log', ...[...hiddenKeys].sort().map(k=>`- ${k}`)];
   const blob=new Blob([lines.join('\n')],{type:'text/plain;charset=utf-8'});
   saveAs(blob,`discard_log_${Date.now()}.txt`);
 };
+
 window.addEventListener('keydown',e=>{
   if(e.key==='ArrowRight')document.getElementById('nextBtn').click();
   if(e.key==='ArrowLeft')document.getElementById('prevBtn').click();
 });
 
-/* ===== Theme ===== */
+/* toast actions */
+toastDismiss.onclick = ()=>{
+  // user wants to stay; update baseline to newest so it won't pop again
+  const latestTs = visiblePairs.length ? visiblePairs[visiblePairs.length-1].photo.tsMs : 0;
+  lastSeenLatestTs = latestTs;
+  localStorage.setItem("last_seen_latest_ts_v2", String(lastSeenLatestTs));
+  hideToast();
+};
+toastDisplay.onclick = ()=>{
+  // jump to newest pair and update baseline
+  if(visiblePairs.length){ idx = visiblePairs.length - 1; show(); }
+  const latestTs = visiblePairs.length ? visiblePairs[visiblePairs.length-1].photo.tsMs : 0;
+  lastSeenLatestTs = latestTs;
+  localStorage.setItem("last_seen_latest_ts_v2", String(lastSeenLatestTs));
+  hideToast();
+};
+
+/* theme */
 const themeBtn=document.getElementById('themeBtn');
 function setTheme(light){document.body.classList.toggle("light",light);themeBtn.textContent=light?"☀️ Light":"🌙 Dark";localStorage.setItem("theme",light?"light":"dark");}
 themeBtn.onclick=()=>setTheme(!document.body.classList.contains("light"));
 if(localStorage.getItem("theme")==="light")setTheme(true);
 
-/* ===== Notification toggle label ===== */
-notifChk.addEventListener('change', ()=>{
-  notifState.textContent = `Notifications: ${notifChk.checked ? "on" : "off"}`;
-});
-notifState.textContent = `Notifications: off`;
-
-/* ===== Start ===== */
-reload();
-setInterval(reload, POLL_MS);
+/* start */
+reload(false);
+setInterval(()=>reload(true), POLL_MS);
 </script>
 </body>
 </html>
