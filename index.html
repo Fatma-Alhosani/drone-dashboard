@@ -30,18 +30,12 @@ header{display:flex;justify-content:space-between;align-items:center;padding:12p
 @media (max-width:980px){.grid{grid-template-columns:1fr}}
 
 /* bottom toast */
-#toast{
-  position:fixed; left:50%; transform:translateX(-50%);
-  bottom:18px; width:min(520px, 92%);
-  display:none; z-index:9999;
-  background:var(--card); border:1px solid var(--border); color:inherit;
-  border-radius:12px; padding:14px 16px; box-shadow:0 10px 40px rgba(0,0,0,.45);
-}
-#toast h4{margin:0 0 6px; font-size:15px}
-#toast p{margin:0 0 10px; color:var(--muted); font-size:13px}
-.toast-actions{display:flex; gap:8px; justify-content:flex-end}
-.toast-btn{padding:7px 12px; border-radius:9px; border:1px solid var(--border); background:var(--sub); color:inherit; cursor:pointer}
-.toast-primary{background:#184d2a; border-color:#1f6d3c; color:#fff}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;width:min(520px,92%);display:none;z-index:9999;background:var(--card);border:1px solid var(--border);color:inherit;border-radius:12px;padding:14px 16px;box-shadow:0 10px 40px rgba(0,0,0,.45)}
+#toast h4{margin:0 0 6px;font-size:15px}
+#toast p{margin:0 0 10px;color:var(--muted);font-size:13px}
+.toast-actions{display:flex;gap:8px;justify-content:flex-end}
+.toast-btn{padding:7px 12px;border-radius:9px;border:1px solid var(--border);background:var(--sub);color:inherit;cursor:pointer}
+.toast-primary{background:#184d2a;border-color:#1f6d3c;color:#fff}
 </style>
 </head>
 <body>
@@ -105,15 +99,13 @@ header{display:flex;justify-content:space-between;align-items:center;padding:12p
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 <script>
-/* ===== CONFIG ===== */
 const OWNER="Fatma-Alhosani", REPO="drone-dashboard", BRANCH="main";
-const POLL_MS=15000, MAX_DELTA_MS=60000; // 15s poll
-/* ================== */
+const POLL_MS=15000, MAX_DELTA_MS=60000;
 
 let photos=[], gps=[], pairs=[], visiblePairs=[], idx=0;
 let hiddenKeys = new Set(JSON.parse(localStorage.getItem("hidden_keys_v1") || "[]"));
 let lastSeenLatestTs = Number(localStorage.getItem("last_seen_latest_ts_v2") || "0");
-let firstLoadDone = false;         // to suppress toast on the first successful load
+let firstLoadDone = false;
 
 const imgEl=document.getElementById('feedImg');
 const imgErr=document.getElementById('imgErr');
@@ -144,40 +136,66 @@ function parseTsMs(key){
 
 async function ghList(path){
   const url=`https://api.github.com/repos/${OWNER}/${REPO}/contents/${path}?ref=${BRANCH}&t=${Date.now()}`;
-  const r=await fetch(url); if(!r.ok) throw new Error(`list ${path} failed: ${r.status}`);
+  const r=await fetch(url);
+  if(!r.ok) throw new Error(`api ${path} ${r.status}`);
   return r.json();
 }
 async function ghGetText(path){
   const url=`https://api.github.com/repos/${OWNER}/${REPO}/contents/${path}?ref=${BRANCH}&t=${Date.now()}`;
-  const r=await fetch(url); if(!r.ok) throw new Error(`get ${path} failed: ${r.status}`);
+  const r=await fetch(url);
+  if(!r.ok) throw new Error(`api get ${path} ${r.status}`);
   const j=await r.json();
   return atob(j.content || "");
 }
-function parseCoords(text){
-  let m=text.match(/lat\D*(-?\d+(?:\.\d+)?)\D*lon\D*(-?\d+(?:\.\d+)?)/i) || text.match(/(-?\d+(?:\.\d+)?)\D*,\D*(-?\d+(?:\.\d+)?)/);
-  if(!m){const nums=Array.from(text.matchAll(/-?\d+(?:\.\d+)?/g)).map(x=>x[0]); if(nums.length>=2) m=[,nums[0],nums[1]];}
-  if(!m) return null;
-  const lat=+m[1], lon=+m[2]; if(!isFinite(lat)||!isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180) return null;
-  return {lat,lon};
+
+/* Fallback loaders from static JSON (if API 403) */
+async function loadPhotosFromJson(){
+  const r = await fetch('photos.json?t='+Date.now());
+  if(!r.ok) throw new Error('photos.json missing');
+  const arr = await r.json();
+  return arr.filter(p=>!hiddenKeys.has(p.key)).sort((a,b)=>a.tsMs-b.tsMs);
+}
+async function loadGpsFromJson(){
+  const r = await fetch('gps.json?t='+Date.now());
+  if(!r.ok) throw new Error('gps.json missing');
+  const arr = await r.json();
+  return arr.filter(g=>!hiddenKeys.has(g.key)).sort((a,b)=>a.tsMs-b.tsMs);
 }
 
 async function loadRepo(){
-  // Photos
-  const pItems=(await ghList("photos")).filter(x=>x.type==="file" && /\.(jpg|jpeg|png|webp)$/i.test(x.name));
-  photos=pItems.map(it=>{
-    const key=it.name.replace(/\.[^.]+$/,""); const ts=parseTsMs(key);
-    return ts?{name:it.name,key,tsMs:ts,url:it.download_url}:null;
-  }).filter(Boolean).filter(p=>!hiddenKeys.has(p.key)).sort((a,b)=>a.tsMs-b.tsMs);
-
-  // GPS
-  const gItems=(await ghList("GPS")).filter(x=>x.type==="file" && /\.txt$/i.test(x.name));
-  const rows=[];
-  for(const it of gItems){
-    const key=it.name.replace(/\.[^.]+$/,""); const ts=parseTsMs(key); if(!ts) continue;
-    const text=await ghGetText(`GPS/${it.name}`); const c=parseCoords(text); if(!c) continue;
-    rows.push({key,tsMs:ts,lat:c.lat,lon:c.lon,path:`GPS/${it.name}`});
+  try{
+    // Photos via API
+    const pItems=(await ghList("photos")).filter(x=>x.type==="file" && /\.(jpg|jpeg|png|webp)$/i.test(x.name));
+    photos=pItems.map(it=>{
+      const key=it.name.replace(/\.[^.]+$/,""); const ts=parseTsMs(key);
+      return ts?{name:it.name,key,tsMs:ts,url:it.download_url}:null;
+    }).filter(Boolean).filter(p=>!hiddenKeys.has(p.key)).sort((a,b)=>a.tsMs-b.tsMs);
+  }catch(e){
+    // API blocked → fallback to JSON
+    photos = await loadPhotosFromJson();
   }
-  gps=rows.filter(r=>!hiddenKeys.has(r.key)).sort((a,b)=>a.tsMs-b.tsMs);
+
+  try{
+    // GPS via API
+    const gItems=(await ghList("GPS")).filter(x=>x.type==="file" && /\.txt$/i.test(x.name));
+    const rows=[];
+    for(const it of gItems){
+      const key=it.name.replace(/\.[^.]+$/,""); const ts=parseTsMs(key); if(!ts) continue;
+      const text=await ghGetText(`GPS/${it.name}`); const m=text.match(/lat\D*(-?\d+(?:\.\d+)?)\D*lon\D*(-?\d+(?:\.\d+)?)/i) || text.match(/(-?\d+(?:\.\d+)?)\D*,\D*(-?\d+(?:\.\d+)?)/);
+      let lat,lon;
+      if(m){lat=+m[1]; lon=+m[2];}
+      else{
+        const nums = Array.from(text.matchAll(/-?\d+(?:\.\d+)?/g)).map(x=>x[0]);
+        if(nums.length>=2){lat=+nums[0]; lon=+nums[1];}
+      }
+      if(!isFinite(lat)||!isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180) continue;
+      rows.push({key,tsMs:ts,lat,lon,path:`GPS/${it.name}`});
+    }
+    gps=rows.filter(r=>!hiddenKeys.has(r.key)).sort((a,b)=>a.tsMs-b.tsMs);
+  }catch(e){
+    // API blocked → fallback to JSON
+    gps = await loadGpsFromJson();
+  }
 }
 
 function buildPairs(){
@@ -216,37 +234,29 @@ function show(){
   updateCounters();
 }
 
-/* --- toast helpers --- */
+/* toast helpers */
 function showToast(){ toast.style.display='block'; }
 function hideToast(){ toast.style.display='none'; }
 
-/* main reload (with real “new pair” detection) */
-async function reload(triggeredByTimer=false){
+/* main reload with “new pair” detection */
+async function reload(){
   try{
     await loadRepo();
     buildPairs();
 
-    // compute newest pair ts
     const latestTs = visiblePairs.length ? visiblePairs[visiblePairs.length-1].photo.tsMs : 0;
 
-    // On FIRST successful load: set baseline, no popup
     if(!firstLoadDone){
       lastSeenLatestTs = latestTs;
       localStorage.setItem("last_seen_latest_ts_v2", String(lastSeenLatestTs));
       firstLoadDone = true;
     }else{
-      // subsequent loads: popup ONLY if a genuinely newer pair exists
-      if(latestTs > lastSeenLatestTs){
-        // show toast once
-        showToast();
-      }
+      if(latestTs > lastSeenLatestTs){ showToast(); }
     }
 
-    // keep showing current selection; if nothing, jump to newest
     if(!visiblePairs.length){ idx=0; }
     show();
-
-    dbg.textContent=`dbg: ok | visiblePairs=${visiblePairs.length}`;
+    dbg.textContent=`dbg: ok | visiblePairs=${visiblePairs.length} (API+fallback)`;
   }catch(e){
     dbg.textContent='dbg: '+e.message;
   }
@@ -255,16 +265,14 @@ async function reload(triggeredByTimer=false){
 /* controls */
 document.getElementById('prevBtn').onclick=()=>{ if(idx>0){idx--;show();} };
 document.getElementById('nextBtn').onclick=()=>{ if(idx<visiblePairs.length-1){idx++;show();} };
-document.getElementById('refreshBtn').onclick=()=>reload(false);
+document.getElementById('refreshBtn').onclick=()=>reload();
 
 document.getElementById('discardBtn').onclick=()=>{
   if(!visiblePairs.length) return;
-  const pr=visiblePairs[idx];
-  hiddenKeys.add(pr.photo.key); saveHidden();
-  // if we hide newest, also advance baseline if needed
+  const pr=visiblePairs[idx]; hiddenKeys.add(pr.photo.key); saveHidden();
   const latestTs = visiblePairs.length ? visiblePairs[visiblePairs.length-1].photo.tsMs : 0;
   if(latestTs > lastSeenLatestTs){ lastSeenLatestTs = latestTs; localStorage.setItem("last_seen_latest_ts_v2", String(lastSeenLatestTs)); }
-  reload(false);
+  reload();
 };
 
 document.getElementById('downloadBtn').onclick=()=>{
@@ -280,14 +288,12 @@ window.addEventListener('keydown',e=>{
 
 /* toast actions */
 toastDismiss.onclick = ()=>{
-  // user wants to stay; update baseline to newest so it won't pop again
   const latestTs = visiblePairs.length ? visiblePairs[visiblePairs.length-1].photo.tsMs : 0;
   lastSeenLatestTs = latestTs;
   localStorage.setItem("last_seen_latest_ts_v2", String(lastSeenLatestTs));
   hideToast();
 };
 toastDisplay.onclick = ()=>{
-  // jump to newest pair and update baseline
   if(visiblePairs.length){ idx = visiblePairs.length - 1; show(); }
   const latestTs = visiblePairs.length ? visiblePairs[visiblePairs.length-1].photo.tsMs : 0;
   lastSeenLatestTs = latestTs;
@@ -302,8 +308,8 @@ themeBtn.onclick=()=>setTheme(!document.body.classList.contains("light"));
 if(localStorage.getItem("theme")==="light")setTheme(true);
 
 /* start */
-reload(false);
-setInterval(()=>reload(true), POLL_MS);
+reload();
+setInterval(reload, POLL_MS);
 </script>
 </body>
 </html>
