@@ -18,7 +18,9 @@ header{display:flex;justify-content:space-between;align-items:center;padding:12p
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1200px;margin:0 auto}
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px}
 .hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-.feed{height:360px;background:#0c0c0c;border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.feed{height:360px;background:#0c0c0c;border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+.feed.newflash{box-shadow:0 0 0 3px var(--accent) inset;animation:flash 1s ease 2}
+@keyframes flash{0%{box-shadow:0 0 0 0 var(--accent) inset}50%{box-shadow:0 0 0 6px var(--accent) inset}100%{box-shadow:0 0 0 0 var(--accent) inset}}
 .feed img{max-width:100%;max-height:100%;display:none}
 #map{height:260px;border-radius:10px}
 .list{margin-top:8px;max-height:170px;overflow:auto;background:var(--chip);border:1px solid var(--border);border-radius:8px;padding:6px;font-family:monospace}
@@ -27,7 +29,26 @@ header{display:flex;justify-content:space-between;align-items:center;padding:12p
 .badge{font-size:12px;color:#fff;background:var(--danger);padding:3px 6px;border-radius:6px}
 .note{max-width:1200px;margin:10px auto 0;color:var(--muted);font-size:12px}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.toggles{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.chk{display:flex;gap:6px;align-items:center;font-size:12px;background:var(--sub);border:1px solid var(--border);padding:6px 10px;border-radius:8px}
 @media (max-width:980px){.grid{grid-template-columns:1fr}}
+
+/* --- Popup (Dismiss / Display) --- */
+#alertBackdrop{
+  position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.55); z-index:9999;
+}
+#alertCard{
+  width:min(420px,94%); background:var(--card); color:inherit; border:1px solid var(--border);
+  border-radius:14px; padding:16px; box-shadow:0 12px 40px rgba(0,0,0,.45);
+}
+#alertTitle{font-weight:700; font-size:17px; margin:0 0 8px}
+#alertBody{font-size:14px; color:var(--muted); margin-bottom:14px}
+#alertActions{display:flex; gap:10px; justify-content:flex-end}
+.alert-btn{
+  padding:8px 14px; border-radius:10px; border:1px solid var(--border); cursor:pointer; background:var(--sub); color:inherit;
+}
+.alert-primary{ background:#184d2a; border-color:#1e6a39; color:#fff; }
 </style>
 </head>
 <body>
@@ -42,12 +63,23 @@ header{display:flex;justify-content:space-between;align-items:center;padding:12p
 <div class="container">
   <div class="grid">
     <div class="card">
-      <div class="hdr"><strong>IMAGES</strong><span id="fname" class="counter">—</span></div>
-      <div class="feed"><img id="feedImg" alt=""><span id="imgErr" style="color:#aaa">Loading…</span></div>
+      <div class="hdr">
+        <strong>IMAGES</strong>
+        <span id="fname" class="counter">—</span>
+      </div>
+      <div class="feed" id="feedBox">
+        <img id="feedImg" alt="">
+        <span id="imgErr" style="color:#aaa">Loading…</span>
+      </div>
       <div class="row" style="margin-top:6px">
         <span class="counter" id="dateTxt">Date: —</span>
         <span class="counter" id="timeTxt">Time: —</span>
         <span class="counter" id="pairCounter">Pair 0 of 0</span>
+      </div>
+      <div class="toggles" style="margin-top:8px">
+        <label class="chk"><input type="checkbox" id="autoJump"> Auto-jump to newest</label>
+        <label class="chk"><input type="checkbox" id="notifChk"> 🔔 Notify on new</label>
+        <span class="counter" id="notifState">Notifications: off</span>
       </div>
     </div>
 
@@ -78,23 +110,38 @@ header{display:flex;justify-content:space-between;align-items:center;padding:12p
   <div class="note" id="dbg">dbg: —</div>
 </div>
 
+<!-- Popup -->
+<div id="alertBackdrop">
+  <div id="alertCard">
+    <div id="alertTitle">A new possible violation detected</div>
+    <div id="alertBody">A new image+GPS pair has arrived. Would you like to display it now?</div>
+    <div id="alertActions">
+      <button id="btnDismiss" class="alert-btn">Dismiss</button>
+      <button id="btnDisplay" class="alert-btn alert-primary">Display</button>
+    </div>
+  </div>
+</div>
+
+<!-- tiny beep (optional) -->
+<audio id="beep" preload="auto">
+  <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABYAAAABAAAAPwAAAFsAAABSU0MM" type="audio/wav">
+</audio>
+
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 <script>
-/* ---------- Repo config ---------- */
-const OWNER="Fatma-Alhosani", REPO="drone-dashboard", BRANCH="main";
-const API_BASE = "https://api.github.com"; // GitHub contents API
-const RAW_BASE = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}`;
+/* ===== Config ===== */
+const POLL_MS = 30000;        // check every 30s
+const MAX_DELTA_MS = 60000;   // pair window
 
-/* ---------- Controls ---------- */
-const POLL_MS=60000;        // auto-refresh ms
-const MAX_DELTA_MS=60000;   // photo<->gps max time gap
-
-/* ---------- State ---------- */
+/* ===== State ===== */
 let photos=[], gps=[], pairs=[], visiblePairs=[], idx=0;
 let hiddenKeys = new Set(JSON.parse(localStorage.getItem("hidden_keys_v1") || "[]"));
+let lastVisibleCount = 0;
+let lastLatestTsMs = 0;
+let pendingNewIndex = null; // where "Display" should jump
 
-/* ---------- DOM ---------- */
+/* ===== DOM ===== */
 const imgEl=document.getElementById('feedImg');
 const imgErr=document.getElementById('imgErr');
 const fname=document.getElementById('fname');
@@ -105,123 +152,110 @@ const gpsCount=document.getElementById('gpsCount');
 const coordBadge=document.getElementById('coordBadge');
 const gpsList=document.getElementById('gpsList');
 const dbg=document.getElementById('dbg');
+const feedBox=document.getElementById('feedBox');
+const autoJump=document.getElementById('autoJump');
+const notifChk=document.getElementById('notifChk');
+const notifState=document.getElementById('notifState');
+const beep=document.getElementById('beep');
 
-/* ---------- Map ---------- */
+const alertBackdrop = document.getElementById('alertBackdrop');
+const btnDismiss    = document.getElementById('btnDismiss');
+const btnDisplay    = document.getElementById('btnDisplay');
+
+/* ===== Map ===== */
 const map=L.map('map').setView([0,0],2);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap"}).addTo(map);
 const marker=L.marker([0,0]).addTo(map);
 
-/* ---------- Helpers ---------- */
+/* ===== Utils ===== */
 function saveHidden(){localStorage.setItem("hidden_keys_v1",JSON.stringify([...hiddenKeys]));}
-function tsToParts(key){const m=key.match(/^(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})$/);return m?{date:m[1],time:`${m[2]}:${m[3]}:${m[4]}`}:{date:"—",time:"—"};}
-function looksLikeTS(stem){return /^(\d{4}-\d{2}-\d{2})[|_ ]?(\d{2})[-:](\d{2})[-:](\d{2})$/.test(stem)}
-function parseCoords(txt){
-  let m = txt.match(/lat\D*(-?\d+(?:\.\d+)?)\D*lon\D*(-?\d+(?:\.\d+)?)/i);
-  if(!m) m = txt.match(/(-?\d+(?:\.\d+)?)\D*,\D*(-?\d+(?:\.\d+)?)/);
-  if(!m){
-    const nums = (txt.match(/-?\d+(?:\.\d+)?/g)||[]);
-    if(nums.length>=2) m=[null,nums[0],nums[1]];
-  }
-  if(!m) return null;
-  const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
-  if(!isFinite(lat)||!isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180) return null;
-  return {lat,lon};
+function tsToParts(key){
+  const m=key.match(/^(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})$/);
+  return m?{date:m[1],time:`${m[2]}:${m[3]}:${m[4]}`}:{date:"—",time:"—"};
 }
-
-/* ---------- GitHub API fetchers ---------- */
-async function ghList(path){
-  const url = `${API_BASE}/repos/${OWNER}/${REPO}/contents/${path}?ref=${BRANCH}`;
-  const r = await fetch(url, {headers: {"Accept":"application/vnd.github+json"}});
-  if(!r.ok) throw new Error(`${path} list failed: ${r.status} ${await r.text()}`);
+async function loadJSON(path){
+  const r=await fetch(path+'?t='+Date.now());
+  if(!r.ok)throw new Error(`get ${path} failed: ${r.status}`);
   return r.json();
 }
-async function ghGetText(path){
-  const url = `${API_BASE}/repos/${OWNER}/${REPO}/contents/${path}?ref=${BRANCH}`;
-  const r = await fetch(url, {headers: {"Accept":"application/vnd.github+json"}});
-  if(!r.ok) throw new Error(`get ${path} failed: ${r.status} ${await r.text()}`);
-  const j = await r.json();
-  const b64 = j.content || "";
-  return atob(b64.replace(/\n/g,""));
-}
 
-/* ---------- Load repo folders directly ---------- */
-async function loadFromRepo(){
-  // 1) Photos
-  const ph = await ghList("photos");
-  photos = [];
-  for(const it of ph){
-    if(it.type!=="file") continue;
-    if(!/\.(jpe?g|png)$/i.test(it.name)) continue;
-    const key = it.name.replace(/\.[^.]+$/,'');
-    if(!looksLikeTS(key)) continue;
-    const ts = tsFromKey(key);
-    if(ts==null) continue;
-    photos.push({
-      name: it.name,
-      key,
-      tsMs: ts,
-      url: `${RAW_BASE}/photos/${it.name}`,
-      html_url: `https://github.com/${OWNER}/${REPO}/blob/${BRANCH}/photos/${it.name}`
-    });
+/* ===== Popup control ===== */
+function showNewAlert(latestIdx){
+  pendingNewIndex = latestIdx;     // store where to jump if "Display"
+  alertBackdrop.style.display = 'flex';
+}
+function hideNewAlert(){
+  alertBackdrop.style.display = 'none';
+  pendingNewIndex = null;
+}
+btnDismiss.onclick = ()=>{ hideNewAlert(); /* stay on current idx */ };
+btnDisplay.onclick = ()=>{
+  if (pendingNewIndex != null) {
+    idx = Math.max(0, Math.min(pendingNewIndex, visiblePairs.length-1));
+    show();
   }
-  photos.sort((a,b)=>a.tsMs-b.tsMs);
-  // 2) GPS
-  const gp = await ghList("GPS");
-  gps = [];
-  for(const it of gp){
-    if(it.type!=="file") continue;
-    if(!/\.txt$/i.test(it.name)) continue;
-    const key = it.name.replace(/\.txt$/i,'');
-    if(!looksLikeTS(key)) continue;
-    const ts = tsFromKey(key);
-    if(ts==null) continue;
-    let txt="";
-    try{
-      txt = await ghGetText(`GPS/${it.name}`);
-    }catch(e){continue;}
-    const c = parseCoords(txt);
-    if(!c) continue;
-    gps.push({
-      key, tsMs: ts,
-      lat:c.lat, lon:c.lon,
-      path:`GPS/${it.name}`,
-      html_url:`https://github.com/${OWNER}/${REPO}/blob/${BRANCH}/GPS/${it.name}`
-    });
+  hideNewAlert();
+};
+
+/* ===== Data reload & pairing ===== */
+async function reload(){
+  try{
+    const p = (await loadJSON('photos.json')).filter(x=>Number.isFinite(x.tsMs) && !hiddenKeys.has(x.key)).sort((a,b)=>a.tsMs-b.tsMs);
+    const g = (await loadJSON('gps.json')).filter(x=>Number.isFinite(x.tsMs) && !hiddenKeys.has(x.key)).sort((a,b)=>a.tsMs-b.tsMs);
+
+    photos=p; gps=g;
+    buildPairs();
+
+    const curCount = visiblePairs.length;
+    const curLatest = curCount ? visiblePairs[visiblePairs.length-1].photo.tsMs : 0;
+    const gotMore = curCount > lastVisibleCount || curLatest > lastLatestTsMs;
+
+    if (gotMore && curCount) {
+      const latestIdx = visiblePairs.length - 1;
+
+      // visual flash
+      feedBox.classList.add('newflash');
+      setTimeout(()=>feedBox.classList.remove('newflash'), 1200);
+
+      // optional sound/browser notif
+      if (notifChk.checked) { try{ beep.currentTime=0; beep.play().catch(()=>{});}catch{} }
+
+      // popup with Dismiss / Display
+      showNewAlert(latestIdx);
+
+      // if autoJump is ON and user ignores popup, still jump
+      if (autoJump.checked) {
+        idx = latestIdx;
+      }
+    }
+
+    show();
+    lastVisibleCount = curCount;
+    lastLatestTsMs = curLatest;
+
+    dbg.textContent=`dbg: ok | visiblePhotos=${photos.length} totalPairs=${pairs.length}`;
+  }catch(e){
+    dbg.textContent='dbg: '+e.message;
   }
-  gps.sort((a,b)=>a.tsMs-b.tsMs);
 }
 
-/* timestamp → ms */
-function tsFromKey(key){
-  const m = key.match(/^(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})$/);
-  if(!m) return null;
-  const d = new Date(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
-  const ms = d.getTime();
-  return isFinite(ms)?ms:null;
-}
-
-/* ---------- Build pairs & render ---------- */
 function buildPairs(){
   pairs=[];
-  if(!photos.length||!gps.length) return;
+  if(!photos.length||!gps.length) { visiblePairs=[]; return; }
   let p=0;
   for(const g of gps){
     while(p+1<photos.length && photos[p+1].tsMs<=g.tsMs) p++;
-    const cand=[p]; if(p>0) cand.push(p-1);
-    let best=-1, diff=1e15;
-    for(const i of cand){
-      const d = Math.abs(photos[i].tsMs-g.tsMs);
-      if(d<diff){ diff=d; best=i; }
-    }
-    if(best>=0 && diff<=MAX_DELTA_MS){
-      pairs.push({gps:g, photo:photos[best]});
-    }
+    const cand=[p]; if(p>0)cand.push(p-1);
+    let best=-1,diff=1e12;
+    for(const i of cand){const d=Math.abs(photos[i].tsMs-g.tsMs); if(d<diff){diff=d; best=i;}}
+    if(best>=0 && diff<=MAX_DELTA_MS) pairs.push({gps:g,photo:photos[best]});
   }
-  visiblePairs = pairs.filter(pr=>!hiddenKeys.has(pr.photo.key));
-  idx = visiblePairs.length ? visiblePairs.length-1 : 0;
+  visiblePairs=pairs.filter(pr=>!hiddenKeys.has(pr.photo.key));
+  if (!visiblePairs.length) idx=0; else idx=Math.min(idx, visiblePairs.length-1);
   updateCounters();
 }
 
+/* ===== UI ===== */
 function updateCounters(){
   pairCounter.textContent=`Pair ${visiblePairs.length?(idx+1):0} of ${visiblePairs.length}`;
   gpsCount.textContent=`${gps.length} items`;
@@ -233,21 +267,21 @@ function show(){
     fname.textContent='—'; dateTxt.textContent='Date: —'; timeTxt.textContent='Time: —'; coordBadge.textContent='—, —';
     gpsList.innerHTML=''; return;
   }
-  const pr = visiblePairs[idx];
-  imgEl.src = pr.photo.url;
-  imgEl.onload = ()=>{ imgEl.style.display='block'; imgErr.style.display='none'; };
-  imgEl.onerror = ()=>{ imgEl.style.display='none'; imgErr.style.display='block'; imgErr.textContent='Image error'; };
-  fname.textContent = pr.photo.name;
-  const parts = tsToParts(pr.photo.key);
-  dateTxt.textContent = 'Date: '+parts.date;
-  timeTxt.textContent = 'Time: '+parts.time;
-  coordBadge.textContent = `${pr.gps.lat.toFixed(5)}, ${pr.gps.lon.toFixed(5)}`;
-  map.setView([pr.gps.lat, pr.gps.lon], 16);
-  marker.setLatLng([pr.gps.lat, pr.gps.lon]);
+  const pr=visiblePairs[idx];
+  imgEl.src=pr.photo.url + "?cb=" + Date.now();
+  imgEl.onload=()=>{imgEl.style.display='block'; imgErr.style.display='none';};
+  imgEl.onerror=()=>{imgEl.style.display='none'; imgErr.style.display='block'; imgErr.textContent='Image error';};
+  fname.textContent=pr.photo.name;
+  const parts=tsToParts(pr.photo.key);
+  dateTxt.textContent='Date: '+parts.date;
+  timeTxt.textContent='Time: '+parts.time;
+  coordBadge.textContent=`${pr.gps.lat.toFixed(5)}, ${pr.gps.lon.toFixed(5)}`;
+  map.setView([pr.gps.lat,pr.gps.lon],16);
+  marker.setLatLng([pr.gps.lat,pr.gps.lon]);
 
-  gpsList.innerHTML = '';
+  gpsList.innerHTML='';
   for(const r of gps){
-    const el = document.createElement('div');
+    const el=document.createElement('div');
     el.textContent = `${r.lat.toFixed(5)}, ${r.lon.toFixed(5)} [${r.key}]`;
     if(r.key===pr.gps.key){ el.style.fontWeight='bold'; el.style.background='#242424'; }
     gpsList.appendChild(el);
@@ -255,49 +289,42 @@ function show(){
   updateCounters();
 }
 
-/* ---------- UI actions ---------- */
-document.getElementById('prevBtn').onclick=()=>{ if(idx>0){idx--; show();} };
-document.getElementById('nextBtn').onclick=()=>{ if(idx<visiblePairs.length-1){idx++; show();} };
+/* ===== Controls ===== */
+document.getElementById('prevBtn').onclick=()=>{if(idx>0){idx--;show();}};
+document.getElementById('nextBtn').onclick=()=>{if(idx<visiblePairs.length-1){idx++;show();}};
 document.getElementById('refreshBtn').onclick=reload;
 document.getElementById('discardBtn').onclick=()=>{
   if(!visiblePairs.length) return;
-  const pr = visiblePairs[idx];
+  const pr=visiblePairs[idx];
   hiddenKeys.add(pr.photo.key);
   saveHidden();
   reload();
 };
 document.getElementById('downloadBtn').onclick=()=>{
-  const lines = ['# Discard Log', ...[...hiddenKeys].sort().map(k=>`- ${k}`)];
-  const blob = new Blob([lines.join('\n')], {type:'text/plain;charset=utf-8'});
-  saveAs(blob, `discard_log_${Date.now()}.txt`);
+  const lines=['# Discard Log', ...[...hiddenKeys].sort().map(k=>`- ${k}`)];
+  const blob=new Blob([lines.join('\n')],{type:'text/plain;charset=utf-8'});
+  saveAs(blob,`discard_log_${Date.now()}.txt`);
 };
 window.addEventListener('keydown',e=>{
-  if(e.key==='ArrowRight') document.getElementById('nextBtn').click();
-  if(e.key==='ArrowLeft')  document.getElementById('prevBtn').click();
+  if(e.key==='ArrowRight')document.getElementById('nextBtn').click();
+  if(e.key==='ArrowLeft')document.getElementById('prevBtn').click();
 });
 
-/* ---------- Theme ---------- */
+/* ===== Theme ===== */
 const themeBtn=document.getElementById('themeBtn');
-function setTheme(light){
-  document.body.classList.toggle("light", light);
-  themeBtn.textContent = light ? "☀️ Light" : "🌙 Dark";
-  localStorage.setItem("theme", light?"light":"dark");
-}
+function setTheme(light){document.body.classList.toggle("light",light);themeBtn.textContent=light?"☀️ Light":"🌙 Dark";localStorage.setItem("theme",light?"light":"dark");}
 themeBtn.onclick=()=>setTheme(!document.body.classList.contains("light"));
-if(localStorage.getItem("theme")==="light") setTheme(true);
+if(localStorage.getItem("theme")==="light")setTheme(true);
 
-/* ---------- Reload pipeline ---------- */
-async function reload(){
-  try{
-    imgErr.textContent='Loading…'; imgErr.style.display='block'; imgEl.style.display='none';
-    await loadFromRepo();     // <-- read folders photos/ and GPS/
-    buildPairs(); show();
-    dbg.textContent = `dbg: ok | photos=${photos.length} gps=${gps.length} pairs=${pairs.length} visible=${visiblePairs.length}`;
-  }catch(e){
-    dbg.textContent = 'dbg: '+ (e && e.message ? e.message : String(e));
-  }
-}
-reload(); setInterval(reload, POLL_MS);
+/* ===== Notification toggle label ===== */
+notifChk.addEventListener('change', ()=>{
+  notifState.textContent = `Notifications: ${notifChk.checked ? "on" : "off"}`;
+});
+notifState.textContent = `Notifications: off`;
+
+/* ===== Start ===== */
+reload();
+setInterval(reload, POLL_MS);
 </script>
 </body>
 </html>
