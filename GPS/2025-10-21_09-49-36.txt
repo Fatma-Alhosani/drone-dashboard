@@ -1,5 +1,5 @@
 Capture time: 2025-10-21_09-49-36
 GPS time: 2025-10-21_09-49-36
-Latitude: 25.3119825
-Longitude: 55.4914857
-Altitude: 2.29 m
+Latitude: 25.3119819
+Longitude: 55.4914874
+Altitude: 2.19 m
