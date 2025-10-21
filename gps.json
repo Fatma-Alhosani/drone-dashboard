@@ -326,5 +326,37 @@
     "lon": 55.4914167,
     "path": "GPS/2025-10-21_09-50-15.txt",
     "html_url": "https://github.com/Fatma-Alhosani/drone-dashboard/blob/main/GPS/2025-10-21_09-50-15.txt"
+  },
+  {
+    "key": "2025-10-21_10-29-02",
+    "tsMs": 1761042542000,
+    "lat": 25.3119317,
+    "lon": 55.4917569,
+    "path": "GPS/2025-10-21_10-29-02.txt",
+    "html_url": "https://github.com/Fatma-Alhosani/drone-dashboard/blob/main/GPS/2025-10-21_10-29-02.txt"
+  },
+  {
+    "key": "2025-10-21_10-29-03",
+    "tsMs": 1761042543000,
+    "lat": 25.3119318,
+    "lon": 55.4917572,
+    "path": "GPS/2025-10-21_10-29-03.txt",
+    "html_url": "https://github.com/Fatma-Alhosani/drone-dashboard/blob/main/GPS/2025-10-21_10-29-03.txt"
+  },
+  {
+    "key": "2025-10-21_10-29-04",
+    "tsMs": 1761042544000,
+    "lat": 25.3119317,
+    "lon": 55.491758,
+    "path": "GPS/2025-10-21_10-29-04.txt",
+    "html_url": "https://github.com/Fatma-Alhosani/drone-dashboard/blob/main/GPS/2025-10-21_10-29-04.txt"
+  },
+  {
+    "key": "2025-10-21_10-30-58",
+    "tsMs": 1761042658000,
+    "lat": 25.3119336,
+    "lon": 55.4917693,
+    "path": "GPS/2025-10-21_10-30-58.txt",
+    "html_url": "https://github.com/Fatma-Alhosani/drone-dashboard/blob/main/GPS/2025-10-21_10-30-58.txt"
   }
 ]
