@@ -10,7 +10,7 @@
 body.light{ --bg:#f7f7f7; --card:#fff; --sub:#f0f0f0; --accent:#0066cc; --muted:#555; --border:#ccc; --danger:#c33; --chip:#e8e8e8; color:#000; }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:#fff;font-family:system-ui,Segoe UI,Arial,sans-serif;}
-header{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:#000;position:relative;}
+header{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:#000;}
 .status{display:flex;gap:12px;align-items:center;font-size:12px}
 .dot{width:10px;height:10px;background:var(--accent);border-radius:50%}
 .btn{padding:8px 12px;border:1px solid var(--border);background:var(--sub);color:inherit;border-radius:8px;cursor:pointer}
@@ -29,16 +29,6 @@ header{display:flex;justify-content:space-between;align-items:center;padding:12p
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 @media (max-width:980px){.grid{grid-template-columns:1fr}}
 
-/* headline */
-.headline {
-  position: absolute;
-  right: 20px;
-  top: 10px;
-  color: #00ff66;
-  font-size: 18px;
-  font-weight: bold;
-}
-
 /* bottom toast */
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;width:min(520px,92%);display:none;z-index:9999;background:var(--card);border:1px solid var(--border);color:inherit;border-radius:12px;padding:14px 16px;box-shadow:0 10px 40px rgba(0,0,0,.45)}
 #toast h4{margin:0 0 6px;font-size:15px}
@@ -51,7 +41,6 @@ header{display:flex;justify-content:space-between;align-items:center;padding:12p
 <body>
 <header>
   <div>DRONE SURVEILLANCE DASHBOARD</div>
-  <div class="headline">Possible Violations</div>
   <div class="status">
     <div class="dot"></div><span>Operational</span>
     <button id="themeBtn" class="btn">🌙 Dark</button>
@@ -112,6 +101,7 @@ header{display:flex;justify-content:space-between;align-items:center;padding:12p
 <script>
 const OWNER="Fatma-Alhosani", REPO="drone-dashboard", BRANCH="main";
 const POLL_MS=15000, MAX_DELTA_MS=60000;
+
 let photos=[], gps=[], pairs=[], visiblePairs=[], idx=0;
 let hiddenKeys = new Set(JSON.parse(localStorage.getItem("hidden_keys_v1") || "[]"));
 let lastSeenLatestTs = Number(localStorage.getItem("last_seen_latest_ts_v2") || "0");
@@ -158,25 +148,54 @@ async function ghGetText(path){
   return atob(j.content || "");
 }
 
+/* Fallback loaders from static JSON (if API 403) */
+async function loadPhotosFromJson(){
+  const r = await fetch('photos.json?t='+Date.now());
+  if(!r.ok) throw new Error('photos.json missing');
+  const arr = await r.json();
+  return arr.filter(p=>!hiddenKeys.has(p.key)).sort((a,b)=>a.tsMs-b.tsMs);
+}
+async function loadGpsFromJson(){
+  const r = await fetch('gps.json?t='+Date.now());
+  if(!r.ok) throw new Error('gps.json missing');
+  const arr = await r.json();
+  return arr.filter(g=>!hiddenKeys.has(g.key)).sort((a,b)=>a.tsMs-b.tsMs);
+}
+
 async function loadRepo(){
   try{
+    // Photos via API
     const pItems=(await ghList("photos")).filter(x=>x.type==="file" && /\.(jpg|jpeg|png|webp)$/i.test(x.name));
     photos=pItems.map(it=>{
       const key=it.name.replace(/\.[^.]+$/,""); const ts=parseTsMs(key);
       return ts?{name:it.name,key,tsMs:ts,url:it.download_url}:null;
     }).filter(Boolean).filter(p=>!hiddenKeys.has(p.key)).sort((a,b)=>a.tsMs-b.tsMs);
+  }catch(e){
+    // API blocked → fallback to JSON
+    photos = await loadPhotosFromJson();
+  }
 
+  try{
+    // GPS via API
     const gItems=(await ghList("GPS")).filter(x=>x.type==="file" && /\.txt$/i.test(x.name));
     const rows=[];
     for(const it of gItems){
       const key=it.name.replace(/\.[^.]+$/,""); const ts=parseTsMs(key); if(!ts) continue;
-      const text=await ghGetText(`GPS/${it.name}`); const m=text.match(/lat\D*(-?\d+(?:\.\d+)?)\D*lon\D*(-?\d+(?:\.\d+)?)/i);
-      if(!m) continue;
-      const lat=+m[1], lon=+m[2];
+      const text=await ghGetText(`GPS/${it.name}`); const m=text.match(/lat\D*(-?\d+(?:\.\d+)?)\D*lon\D*(-?\d+(?:\.\d+)?)/i) || text.match(/(-?\d+(?:\.\d+)?)\D*,\D*(-?\d+(?:\.\d+)?)/);
+      let lat,lon;
+      if(m){lat=+m[1]; lon=+m[2];}
+      else{
+        const nums = Array.from(text.matchAll(/-?\d+(?:\.\d+)?/g)).map(x=>x[0]);
+        if(nums.length>=2){lat=+nums[0]; lon=+nums[1];}
+      }
+      if(!isFinite(lat)||!isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180) continue;
       rows.push({key,tsMs:ts,lat,lon,path:`GPS/${it.name}`});
     }
     gps=rows.filter(r=>!hiddenKeys.has(r.key)).sort((a,b)=>a.tsMs-b.tsMs);
-  }catch(e){ dbg.textContent='dbg: '+e.message; }
+  }catch(e){
+    // API blocked → fallback to JSON
+    gps = await loadGpsFromJson();
+  }
 }
 
 function buildPairs(){
@@ -193,11 +212,15 @@ function buildPairs(){
   if(!firstLoadDone){ idx=visiblePairs.length?visiblePairs.length-1:0; }
 }
 
+function updateCounters(){
+  pairCounter.textContent=`Pair ${visiblePairs.length?(idx+1):0} of ${visiblePairs.length}`;
+  gpsCount.textContent=`${gps.length} items`;
+}
 function show(){
   if(!visiblePairs.length){
     imgEl.style.display='none'; imgErr.style.display='block'; imgErr.textContent='No visible pairs';
     fname.textContent='—'; dateTxt.textContent='Date: —'; timeTxt.textContent='Time: —'; coordBadge.textContent='—, —';
-    gpsList.innerHTML=''; return;
+    gpsList.innerHTML=''; updateCounters(); return;
   }
   const pr=visiblePairs[idx];
   imgEl.src=pr.photo.url;
@@ -208,29 +231,74 @@ function show(){
   coordBadge.textContent=`${pr.gps.lat.toFixed(5)}, ${pr.gps.lon.toFixed(5)}`;
   map.setView([pr.gps.lat,pr.gps.lon],16); marker.setLatLng([pr.gps.lat,pr.gps.lon]);
   gpsList.innerHTML=''; for(const r of gps){ const el=document.createElement('div'); el.textContent=`${r.lat.toFixed(5)}, ${r.lon.toFixed(5)} [${r.key}]`; if(r.key===pr.gps.key){el.style.fontWeight='bold'; el.style.background='#242424';} gpsList.appendChild(el); }
+  updateCounters();
 }
 
+/* toast helpers */
+function showToast(){ toast.style.display='block'; }
+function hideToast(){ toast.style.display='none'; }
+
+/* main reload with “new pair” detection */
 async function reload(){
   try{
     await loadRepo();
     buildPairs();
+
+    const latestTs = visiblePairs.length ? visiblePairs[visiblePairs.length-1].photo.tsMs : 0;
+
+    if(!firstLoadDone){
+      lastSeenLatestTs = latestTs;
+      localStorage.setItem("last_seen_latest_ts_v2", String(lastSeenLatestTs));
+      firstLoadDone = true;
+    }else{
+      if(latestTs > lastSeenLatestTs){ showToast(); }
+    }
+
+    if(!visiblePairs.length){ idx=0; }
     show();
-    dbg.textContent=`dbg: ok | visiblePairs=${visiblePairs.length}`;
-  }catch(e){ dbg.textContent='dbg: '+e.message; }
+    dbg.textContent=`dbg: ok | visiblePairs=${visiblePairs.length} (API+fallback)`;
+  }catch(e){
+    dbg.textContent='dbg: '+e.message;
+  }
 }
 
 /* controls */
 document.getElementById('prevBtn').onclick=()=>{ if(idx>0){idx--;show();} };
 document.getElementById('nextBtn').onclick=()=>{ if(idx<visiblePairs.length-1){idx++;show();} };
-document.getElementById('refreshBtn').onclick=()=>location.reload();
+document.getElementById('refreshBtn').onclick=()=>reload();
+
 document.getElementById('discardBtn').onclick=()=>{
   if(!visiblePairs.length) return;
-  const pr=visiblePairs[idx]; hiddenKeys.add(pr.photo.key); saveHidden(); reload();
+  const pr=visiblePairs[idx]; hiddenKeys.add(pr.photo.key); saveHidden();
+  const latestTs = visiblePairs.length ? visiblePairs[visiblePairs.length-1].photo.tsMs : 0;
+  if(latestTs > lastSeenLatestTs){ lastSeenLatestTs = latestTs; localStorage.setItem("last_seen_latest_ts_v2", String(lastSeenLatestTs)); }
+  reload();
 };
+
 document.getElementById('downloadBtn').onclick=()=>{
   const lines=['# Discard Log', ...[...hiddenKeys].sort().map(k=>`- ${k}`)];
   const blob=new Blob([lines.join('\n')],{type:'text/plain;charset=utf-8'});
   saveAs(blob,`discard_log_${Date.now()}.txt`);
+};
+
+window.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight')document.getElementById('nextBtn').click();
+  if(e.key==='ArrowLeft')document.getElementById('prevBtn').click();
+});
+
+/* toast actions */
+toastDismiss.onclick = ()=>{
+  const latestTs = visiblePairs.length ? visiblePairs[visiblePairs.length-1].photo.tsMs : 0;
+  lastSeenLatestTs = latestTs;
+  localStorage.setItem("last_seen_latest_ts_v2", String(lastSeenLatestTs));
+  hideToast();
+};
+toastDisplay.onclick = ()=>{
+  if(visiblePairs.length){ idx = visiblePairs.length - 1; show(); }
+  const latestTs = visiblePairs.length ? visiblePairs[visiblePairs.length-1].photo.tsMs : 0;
+  lastSeenLatestTs = latestTs;
+  localStorage.setItem("last_seen_latest_ts_v2", String(lastSeenLatestTs));
+  hideToast();
 };
 
 /* theme */
