@@ -32,60 +32,69 @@ header{display:flex;justify-content:space-between;align-items:center;padding:12p
 </head>
 <body>
 <header>
-<div>DRONE SURVEILLANCE DASHBOARD</div>
-<div class="status">
-<div class="dot"></div><span>Operational</span>
-<button id="themeBtn" class="btn">🌙 Dark</button>
-</div>
+  <div>DRONE SURVEILLANCE DASHBOARD</div>
+  <div class="status">
+    <div class="dot"></div><span>Operational</span>
+    <button id="themeBtn" class="btn">🌙 Dark</button>
+  </div>
 </header>
 
 <div class="container">
-<div class="grid">
-<div class="card">
-<div class="hdr"><strong>IMAGES</strong><span id="fname" class="counter">—</span></div>
-<div class="feed"><img id="feedImg" alt=""><span id="imgErr" style="color:#aaa">Loading…</span></div>
-<div class="row" style="margin-top:6px">
-<span class="counter" id="dateTxt">Date: —</span>
-<span class="counter" id="timeTxt">Time: —</span>
-<span class="counter" id="pairCounter">Pair 0 of 0</span>
-</div>
-</div>
+  <div class="grid">
+    <div class="card">
+      <div class="hdr"><strong>IMAGES</strong><span id="fname" class="counter">—</span></div>
+      <div class="feed"><img id="feedImg" alt=""><span id="imgErr" style="color:#aaa">Loading…</span></div>
+      <div class="row" style="margin-top:6px">
+        <span class="counter" id="dateTxt">Date: —</span>
+        <span class="counter" id="timeTxt">Time: —</span>
+        <span class="counter" id="pairCounter">Pair 0 of 0</span>
+      </div>
+    </div>
 
-<div class="card">
-<div class="hdr">
-<strong>GPS COORDINATES</strong>
-<span class="counter" id="gpsCount">0 items</span>
-</div>
-<div class="card" style="padding:0;background:#2a0f0f;border-color:#3a1a1a">
-<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px">
-<strong>Current GPS Location</strong>
-<span id="coordBadge" class="badge">lat, lon</span>
-</div>
-<div id="map"></div>
-</div>
-<div class="list" id="gpsList"></div>
-</div>
-</div>
+    <div class="card">
+      <div class="hdr">
+        <strong>GPS COORDINATES</strong>
+        <span class="counter" id="gpsCount">0 items</span>
+      </div>
+      <div class="card" style="padding:0;background:#2a0f0f;border-color:#3a1a1a">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px">
+          <strong>Current GPS Location</strong>
+          <span id="coordBadge" class="badge">lat, lon</span>
+        </div>
+        <div id="map"></div>
+      </div>
+      <div class="list" id="gpsList"></div>
+    </div>
+  </div>
 
-<div class="controls">
-<button class="btn" id="prevBtn">Previous</button>
-<button class="btn" id="refreshBtn">Refresh</button>
-<button class="btn" id="nextBtn">Next</button>
-<button class="btn" style="background:#5a1313;border-color:#772020;color:#fff" id="discardBtn">Discard</button>
-<button class="btn" style="background:#193;border-color:#1a4;color:#fff" id="downloadBtn">Download logs</button>
-</div>
+  <div class="controls">
+    <button class="btn" id="prevBtn">Previous</button>
+    <button class="btn" id="refreshBtn">Refresh</button>
+    <button class="btn" id="nextBtn">Next</button>
+    <button class="btn" style="background:#5a1313;border-color:#772020;color:#fff" id="discardBtn">Discard</button>
+    <button class="btn" style="background:#193;border-color:#1a4;color:#fff" id="downloadBtn">Download logs</button>
+  </div>
 
-<div class="note" id="dbg">dbg: —</div>
+  <div class="note" id="dbg">dbg: —</div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 <script>
+/* ---------- Repo config ---------- */
 const OWNER="Fatma-Alhosani", REPO="drone-dashboard", BRANCH="main";
-const POLL_MS=60000, MAX_DELTA_MS=60000;
+const API_BASE = "https://api.github.com"; // GitHub contents API
+const RAW_BASE = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}`;
+
+/* ---------- Controls ---------- */
+const POLL_MS=60000;        // auto-refresh ms
+const MAX_DELTA_MS=60000;   // photo<->gps max time gap
+
+/* ---------- State ---------- */
 let photos=[], gps=[], pairs=[], visiblePairs=[], idx=0;
 let hiddenKeys = new Set(JSON.parse(localStorage.getItem("hidden_keys_v1") || "[]"));
 
+/* ---------- DOM ---------- */
 const imgEl=document.getElementById('feedImg');
 const imgErr=document.getElementById('imgErr');
 const fname=document.getElementById('fname');
@@ -97,99 +106,198 @@ const coordBadge=document.getElementById('coordBadge');
 const gpsList=document.getElementById('gpsList');
 const dbg=document.getElementById('dbg');
 
+/* ---------- Map ---------- */
 const map=L.map('map').setView([0,0],2);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap"}).addTo(map);
 const marker=L.marker([0,0]).addTo(map);
 
+/* ---------- Helpers ---------- */
 function saveHidden(){localStorage.setItem("hidden_keys_v1",JSON.stringify([...hiddenKeys]));}
 function tsToParts(key){const m=key.match(/^(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})$/);return m?{date:m[1],time:`${m[2]}:${m[3]}:${m[4]}`}:{date:"—",time:"—"};}
-async function loadJSON(path){const r=await fetch(path+'?t='+Date.now());if(!r.ok)throw new Error(`get ${path} failed: ${r.status}`);return r.json();}
-
-async function reload(){
-try{
-photos=(await loadJSON('photos.json')).filter(p=>Number.isFinite(p.tsMs)&&!hiddenKeys.has(p.key)).sort((a,b)=>a.tsMs-b.tsMs);
-gps=(await loadJSON('gps.json')).filter(g=>Number.isFinite(g.tsMs)&&!hiddenKeys.has(g.key)).sort((a,b)=>a.tsMs-b.tsMs);
-buildPairs(); show();
-dbg.textContent=`dbg: ok | visible=${photos.length} total=${pairs.length}`;
-}catch(e){
-dbg.textContent='dbg: '+e.message;
+function looksLikeTS(stem){return /^(\d{4}-\d{2}-\d{2})[|_ ]?(\d{2})[-:](\d{2})[-:](\d{2})$/.test(stem)}
+function parseCoords(txt){
+  let m = txt.match(/lat\D*(-?\d+(?:\.\d+)?)\D*lon\D*(-?\d+(?:\.\d+)?)/i);
+  if(!m) m = txt.match(/(-?\d+(?:\.\d+)?)\D*,\D*(-?\d+(?:\.\d+)?)/);
+  if(!m){
+    const nums = (txt.match(/-?\d+(?:\.\d+)?/g)||[]);
+    if(nums.length>=2) m=[null,nums[0],nums[1]];
+  }
+  if(!m) return null;
+  const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+  if(!isFinite(lat)||!isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180) return null;
+  return {lat,lon};
 }
+
+/* ---------- GitHub API fetchers ---------- */
+async function ghList(path){
+  const url = `${API_BASE}/repos/${OWNER}/${REPO}/contents/${path}?ref=${BRANCH}`;
+  const r = await fetch(url, {headers: {"Accept":"application/vnd.github+json"}});
+  if(!r.ok) throw new Error(`${path} list failed: ${r.status} ${await r.text()}`);
+  return r.json();
+}
+async function ghGetText(path){
+  const url = `${API_BASE}/repos/${OWNER}/${REPO}/contents/${path}?ref=${BRANCH}`;
+  const r = await fetch(url, {headers: {"Accept":"application/vnd.github+json"}});
+  if(!r.ok) throw new Error(`get ${path} failed: ${r.status} ${await r.text()}`);
+  const j = await r.json();
+  const b64 = j.content || "";
+  return atob(b64.replace(/\n/g,""));
 }
 
+/* ---------- Load repo folders directly ---------- */
+async function loadFromRepo(){
+  // 1) Photos
+  const ph = await ghList("photos");
+  photos = [];
+  for(const it of ph){
+    if(it.type!=="file") continue;
+    if(!/\.(jpe?g|png)$/i.test(it.name)) continue;
+    const key = it.name.replace(/\.[^.]+$/,'');
+    if(!looksLikeTS(key)) continue;
+    const ts = tsFromKey(key);
+    if(ts==null) continue;
+    photos.push({
+      name: it.name,
+      key,
+      tsMs: ts,
+      url: `${RAW_BASE}/photos/${it.name}`,
+      html_url: `https://github.com/${OWNER}/${REPO}/blob/${BRANCH}/photos/${it.name}`
+    });
+  }
+  photos.sort((a,b)=>a.tsMs-b.tsMs);
+  // 2) GPS
+  const gp = await ghList("GPS");
+  gps = [];
+  for(const it of gp){
+    if(it.type!=="file") continue;
+    if(!/\.txt$/i.test(it.name)) continue;
+    const key = it.name.replace(/\.txt$/i,'');
+    if(!looksLikeTS(key)) continue;
+    const ts = tsFromKey(key);
+    if(ts==null) continue;
+    let txt="";
+    try{
+      txt = await ghGetText(`GPS/${it.name}`);
+    }catch(e){continue;}
+    const c = parseCoords(txt);
+    if(!c) continue;
+    gps.push({
+      key, tsMs: ts,
+      lat:c.lat, lon:c.lon,
+      path:`GPS/${it.name}`,
+      html_url:`https://github.com/${OWNER}/${REPO}/blob/${BRANCH}/GPS/${it.name}`
+    });
+  }
+  gps.sort((a,b)=>a.tsMs-b.tsMs);
+}
+
+/* timestamp → ms */
+function tsFromKey(key){
+  const m = key.match(/^(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})$/);
+  if(!m) return null;
+  const d = new Date(`${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`);
+  const ms = d.getTime();
+  return isFinite(ms)?ms:null;
+}
+
+/* ---------- Build pairs & render ---------- */
 function buildPairs(){
-pairs=[];
-if(!photos.length||!gps.length)return;
-let p=0;
-for(const g of gps){
-while(p+1<photos.length&&photos[p+1].tsMs<=g.tsMs)p++;
-const cand=[p];if(p>0)cand.push(p-1);
-let best=-1,diff=1e12;
-for(const i of cand){const d=Math.abs(photos[i].tsMs-g.tsMs);if(d<diff){diff=d;best=i;}}
-if(best>=0&&diff<=MAX_DELTA_MS)pairs.push({gps:g,photo:photos[best]});
-}
-visiblePairs=pairs.filter(pr=>!hiddenKeys.has(pr.photo.key));
-idx=visiblePairs.length?visiblePairs.length-1:0;
-updateCounters();
+  pairs=[];
+  if(!photos.length||!gps.length) return;
+  let p=0;
+  for(const g of gps){
+    while(p+1<photos.length && photos[p+1].tsMs<=g.tsMs) p++;
+    const cand=[p]; if(p>0) cand.push(p-1);
+    let best=-1, diff=1e15;
+    for(const i of cand){
+      const d = Math.abs(photos[i].tsMs-g.tsMs);
+      if(d<diff){ diff=d; best=i; }
+    }
+    if(best>=0 && diff<=MAX_DELTA_MS){
+      pairs.push({gps:g, photo:photos[best]});
+    }
+  }
+  visiblePairs = pairs.filter(pr=>!hiddenKeys.has(pr.photo.key));
+  idx = visiblePairs.length ? visiblePairs.length-1 : 0;
+  updateCounters();
 }
 
 function updateCounters(){
-pairCounter.textContent=`Pair ${visiblePairs.length?(idx+1):0} of ${visiblePairs.length}`;
-gpsCount.textContent=`${gps.length} items`;
+  pairCounter.textContent=`Pair ${visiblePairs.length?(idx+1):0} of ${visiblePairs.length}`;
+  gpsCount.textContent=`${gps.length} items`;
 }
 
 function show(){
-if(!visiblePairs.length){
-imgEl.style.display='none';imgErr.style.display='block';imgErr.textContent='No visible pairs';
-fname.textContent='—';dateTxt.textContent='Date: —';timeTxt.textContent='Time: —';coordBadge.textContent='—, —';
-gpsList.innerHTML='';return;
-}
-const pr=visiblePairs[idx];
-imgEl.src=pr.photo.url;
-imgEl.onload=()=>{imgEl.style.display='block';imgErr.style.display='none';};
-imgEl.onerror=()=>{imgEl.style.display='none';imgErr.style.display='block';imgErr.textContent='Image error';};
-fname.textContent=pr.photo.name;
-const parts=tsToParts(pr.photo.key);
-dateTxt.textContent='Date: '+parts.date;
-timeTxt.textContent='Time: '+parts.time;
-coordBadge.textContent=`${pr.gps.lat.toFixed(5)}, ${pr.gps.lon.toFixed(5)}`;
-map.setView([pr.gps.lat,pr.gps.lon],16);
-marker.setLatLng([pr.gps.lat,pr.gps.lon]);
-gpsList.innerHTML='';
-for(const r of gps){
-const el=document.createElement('div');
-el.textContent=`${r.lat.toFixed(5)}, ${r.lon.toFixed(5)} [${r.key}]`;
-if(r.key===pr.gps.key){el.style.fontWeight='bold';el.style.background='#242424';}
-gpsList.appendChild(el);
-}
-updateCounters();
+  if(!visiblePairs.length){
+    imgEl.style.display='none'; imgErr.style.display='block'; imgErr.textContent='No visible pairs';
+    fname.textContent='—'; dateTxt.textContent='Date: —'; timeTxt.textContent='Time: —'; coordBadge.textContent='—, —';
+    gpsList.innerHTML=''; return;
+  }
+  const pr = visiblePairs[idx];
+  imgEl.src = pr.photo.url;
+  imgEl.onload = ()=>{ imgEl.style.display='block'; imgErr.style.display='none'; };
+  imgEl.onerror = ()=>{ imgEl.style.display='none'; imgErr.style.display='block'; imgErr.textContent='Image error'; };
+  fname.textContent = pr.photo.name;
+  const parts = tsToParts(pr.photo.key);
+  dateTxt.textContent = 'Date: '+parts.date;
+  timeTxt.textContent = 'Time: '+parts.time;
+  coordBadge.textContent = `${pr.gps.lat.toFixed(5)}, ${pr.gps.lon.toFixed(5)}`;
+  map.setView([pr.gps.lat, pr.gps.lon], 16);
+  marker.setLatLng([pr.gps.lat, pr.gps.lon]);
+
+  gpsList.innerHTML = '';
+  for(const r of gps){
+    const el = document.createElement('div');
+    el.textContent = `${r.lat.toFixed(5)}, ${r.lon.toFixed(5)} [${r.key}]`;
+    if(r.key===pr.gps.key){ el.style.fontWeight='bold'; el.style.background='#242424'; }
+    gpsList.appendChild(el);
+  }
+  updateCounters();
 }
 
-document.getElementById('prevBtn').onclick=()=>{if(idx>0){idx--;show();}};
-document.getElementById('nextBtn').onclick=()=>{if(idx<visiblePairs.length-1){idx++;show();}};
+/* ---------- UI actions ---------- */
+document.getElementById('prevBtn').onclick=()=>{ if(idx>0){idx--; show();} };
+document.getElementById('nextBtn').onclick=()=>{ if(idx<visiblePairs.length-1){idx++; show();} };
 document.getElementById('refreshBtn').onclick=reload;
 document.getElementById('discardBtn').onclick=()=>{
-if(!visiblePairs.length)return;
-const pr=visiblePairs[idx];
-hiddenKeys.add(pr.photo.key);
-saveHidden();
-reload();
+  if(!visiblePairs.length) return;
+  const pr = visiblePairs[idx];
+  hiddenKeys.add(pr.photo.key);
+  saveHidden();
+  reload();
 };
 document.getElementById('downloadBtn').onclick=()=>{
-const lines=[];
-lines.push(`# Discard Log`);
-for(const key of [...hiddenKeys].sort())lines.push(`- ${key}`);
-const blob=new Blob([lines.join('\n')],{type:'text/plain;charset=utf-8'});
-saveAs(blob,`discard_log_${Date.now()}.txt`);
+  const lines = ['# Discard Log', ...[...hiddenKeys].sort().map(k=>`- ${k}`)];
+  const blob = new Blob([lines.join('\n')], {type:'text/plain;charset=utf-8'});
+  saveAs(blob, `discard_log_${Date.now()}.txt`);
 };
 window.addEventListener('keydown',e=>{
-if(e.key==='ArrowRight')document.getElementById('nextBtn').click();
-if(e.key==='ArrowLeft')document.getElementById('prevBtn').click();
+  if(e.key==='ArrowRight') document.getElementById('nextBtn').click();
+  if(e.key==='ArrowLeft')  document.getElementById('prevBtn').click();
 });
+
+/* ---------- Theme ---------- */
 const themeBtn=document.getElementById('themeBtn');
-function setTheme(light){document.body.classList.toggle("light",light);themeBtn.textContent=light?"☀️ Light":"🌙 Dark";localStorage.setItem("theme",light?"light":"dark");}
+function setTheme(light){
+  document.body.classList.toggle("light", light);
+  themeBtn.textContent = light ? "☀️ Light" : "🌙 Dark";
+  localStorage.setItem("theme", light?"light":"dark");
+}
 themeBtn.onclick=()=>setTheme(!document.body.classList.contains("light"));
-if(localStorage.getItem("theme")==="light")setTheme(true);
-reload();setInterval(reload,POLL_MS);
+if(localStorage.getItem("theme")==="light") setTheme(true);
+
+/* ---------- Reload pipeline ---------- */
+async function reload(){
+  try{
+    imgErr.textContent='Loading…'; imgErr.style.display='block'; imgEl.style.display='none';
+    await loadFromRepo();     // <-- read folders photos/ and GPS/
+    buildPairs(); show();
+    dbg.textContent = `dbg: ok | photos=${photos.length} gps=${gps.length} pairs=${pairs.length} visible=${visiblePairs.length}`;
+  }catch(e){
+    dbg.textContent = 'dbg: '+ (e && e.message ? e.message : String(e));
+  }
+}
+reload(); setInterval(reload, POLL_MS);
 </script>
 </body>
 </html>
