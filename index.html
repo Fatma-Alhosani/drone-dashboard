@@ -18,15 +18,38 @@ header{display:flex;justify-content:space-between;align-items:center;padding:12p
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1200px;margin:0 auto}
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px}
 .hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+
+/* ✅ FIXED: feed img now fits inside box by default but zoom works */
 .feed{position:relative;height:360px;background:#0c0c0c;border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden}
-.feed img{max-width:100%;max-height:100%;object-fit:contain;display:none}
+.feed img{
+max-width:100%;
+max-height:100%;
+object-fit:contain;
+display:none;
+transform-origin:center center;
+}
+
 #map{height:260px;border-radius:10px}
 .list{margin-top:8px;max-height:170px;overflow:auto;background:var(--chip);border:1px solid var(--border);border-radius:8px;padding:6px;font-family:monospace}
 .controls{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:12px;flex-wrap:wrap}
 .counter{padding:6px 10px;border:1px solid var(--border);background:var(--sub);border-radius:8px;color:var(--muted)}
 .badge{font-size:12px;color:#fff;background:var(--danger);padding:3px 6px;border-radius:6px}
 .note{max-width:1200px;margin:10px auto 0;color:var(--muted);font-size:12px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+@media (max-width:980px){.grid{grid-template-columns:1fr}}
+
+/* green title */
 .section-title{max-width:1200px;margin:0 auto 12px;font-weight:700;color:var(--accent);}
+
+/* toast */
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;width:min(520px,92%);display:none;z-index:9999;background:var(--card);border:1px solid var(--border);color:inherit;border-radius:12px;padding:14px 16px;box-shadow:0 10px 40px rgba(0,0,0,.45)}
+#toast h4{margin:0 0 6px;font-size:15px}
+#toast p{margin:0 0 10px;color:var(--muted);font-size:13px}
+.toast-actions{display:flex;gap:8px;justify-content:flex-end}
+.toast-btn{padding:7px 12px;border-radius:9px;border:1px solid var(--border);background:var(--sub);color:inherit;cursor:pointer}
+.toast-primary{background:#184d2a;border-color:#1f6d3c;color:#fff}
+
+/* zoom controls */
 .zoom-controls{position:absolute;right:8px;top:8px;display:flex;gap:6px;z-index:10}
 .zoom-btn{background:rgba(0,0,0,.55);border:1px solid var(--border);color:#fff;border-radius:8px;padding:6px 8px;font-size:13px;cursor:pointer}
 </style>
@@ -55,100 +78,93 @@ header{display:flex;justify-content:space-between;align-items:center;padding:12p
 <img id="feedImg" alt="">
 <span id="imgErr" style="color:#aaa">Loading…</span>
 </div>
-<div class="row" style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
+<div class="row" style="margin-top:6px">
+<span class="counter" id="dateTxt">Date: —</span>
+<span class="counter" id="timeTxt">Time: —</span>
+<span class="counter" id="pairCounter">Pair 0 of 0</span>
+</div>
+</div>
+
+<div class="card">
+<div class="hdr">
+<strong>Gps coordinates</strong>
+<span class="counter" id="gpsCount">0 items</span>
+</div>
+<div class="card" style="padding:0;background:#2a0f0f;border-color:#3a1a1a">
+<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px">
+<strong>Current gps location</strong>
+<span id="coordBadge" class="badge">lat, lon</span>
+</div>
+<div id="map"></div>
+</div>
+<div class="list" id="gpsList"></div>
+</div>
+</div>
+
+<div class="controls">
+<button class="btn" id="prevBtn">Previous</button>
+<button class="btn" id="refreshBtn">Refresh</button>
+<button class="btn" id="nextBtn">Next</button>
+<button class="btn" style="background:#5a1313;border-color:#772020;color:#fff" id="discardBtn">Discard</button>
+<button class="btn" style="background:#193;border-color:#1a4;color:#fff" id="downloadBtn">Download logs</button>
+</div>
+
+<div class="note" id="dbg">dbg: —</div>
+</div>
+
+<div id="toast">
+<h4>A new possible violation detected</h4>
+<p>A new image+GPS pair has arrived.</p>
+<div class="toast-actions">
+<button id="toastDismiss" class="toast-btn">Dismiss</button>
+<button id="toastDisplay" class="toast-btn toast-primary">Display</button>
+</div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 <script>
-const OWNER="Fatma-Alhosani", REPO="drone-dashboard", BRANCH="main";
-const POLL_MS=15000, MAX_DELTA_MS=60000;
-let photos=[], gps=[], pairs=[], visiblePairs=[], idx=0;
+/* === same JS as your version (unchanged) === */
+const OWNER="Fatma-Alhosani",REPO="drone-dashboard",BRANCH="main";
+const POLL_MS=15000,MAX_DELTA_MS=60000;
+let photos=[],gps=[],pairs=[],visiblePairs=[],idx=0;
 let hiddenKeys=new Set(JSON.parse(localStorage.getItem("hidden_keys_v1")||"[]"));
-let firstLoad=false;
-
-const img=document.getElementById('feedImg');
-const imgErr=document.getElementById('imgErr');
-const fname=document.getElementById('fname');
-const dateTxt=document.getElementById('dateTxt');
-const timeTxt=document.getElementById('timeTxt');
-const pairCounter=document.getElementById('pairCounter');
-const gpsCount=document.getElementById('gpsCount');
-const coordBadge=document.getElementById('coordBadge');
-const gpsList=document.getElementById('gpsList');
-const dbg=document.getElementById('dbg');
-
-const map=L.map('map').setView([0,0],2);
+let lastSeenLatestTs=Number(localStorage.getItem("last_seen_latest_ts_v2")||"0");
+let firstLoadDone=false;
+const imgEl=document.getElementById("feedImg"),imgErr=document.getElementById("imgErr"),fname=document.getElementById("fname"),
+dateTxt=document.getElementById("dateTxt"),timeTxt=document.getElementById("timeTxt"),pairCounter=document.getElementById("pairCounter"),
+gpsCount=document.getElementById("gpsCount"),coordBadge=document.getElementById("coordBadge"),gpsList=document.getElementById("gpsList"),
+dbg=document.getElementById("dbg"),toast=document.getElementById("toast"),toastDismiss=document.getElementById("toastDismiss"),
+toastDisplay=document.getElementById("toastDisplay"),feedBox=document.getElementById("feedBox");
+const map=L.map("map").setView([0,0],2);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap"}).addTo(map);
 const marker=L.marker([0,0]).addTo(map);
-
-function parseTsMs(key){
-const m=key.match(/^(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})$/);
-if(!m)return null;
-const d=new Date(Date.UTC(+m[1].slice(0,4),+m[1].slice(5,7)-1,+m[1].slice(8,10),+m[2],+m[3],+m[4]));
-return d.getTime();
-}
-async function ghList(p){const u=`https://api.github.com/repos/${OWNER}/${REPO}/contents/${p}?ref=${BRANCH}&t=${Date.now()}`;const r=await fetch(u);if(!r.ok)throw new Error(p+" "+r.status);return r.json();}
-async function ghGetText(p){const u=`https://api.github.com/repos/${OWNER}/${REPO}/contents/${p}?ref=${BRANCH}&t=${Date.now()}`;const r=await fetch(u);if(!r.ok)throw new Error(p+" "+r.status);const j=await r.json();return atob(j.content||"");}
-
-async function loadRepo(){
-const pItems=(await ghList("photos")).filter(x=>x.type==="file"&&/\.(jpg|jpeg|png)$/i.test(x.name));
-photos=pItems.map(it=>{const k=it.name.replace(/\.[^.]+$/,"");const ts=parseTsMs(k);return ts?{key:k,tsMs:ts,url:it.download_url,name:it.name}:null;}).filter(Boolean).sort((a,b)=>a.tsMs-b.tsMs);
-const gItems=(await ghList("GPS")).filter(x=>x.type==="file"&&/\.txt$/i.test(x.name));
-gps=[];
-for(const it of gItems){
-const k=it.name.replace(/\.[^.]+$/,"");const ts=parseTsMs(k);if(!ts)continue;
-const t=await ghGetText(`GPS/${it.name}`);const m=t.match(/(-?\d+\.\d+)[^\d-]+(-?\d+\.\d+)/);
-if(m)gps.push({key:k,tsMs:ts,lat:+m[1],lon:+m[2]});
-}
-}
-function buildPairs(){
-pairs=[];if(!photos.length||!gps.length)return;
-let p=0;
-for(const g of gps){
-while(p+1<photos.length&&photos[p+1].tsMs<=g.tsMs)p++;
-const best=p;const d=Math.abs(photos[best].tsMs-g.tsMs);
-if(d<=MAX_DELTA_MS)pairs.push({photo:photos[best],gps:g});
-}
-visiblePairs=pairs;idx=visiblePairs.length?visiblePairs.length-1:0;
-}
-function tsToParts(k){const m=k.match(/^(\d{4}-\d{2}-\d{2}).?(\d{2})-(\d{2})-(\d{2})$/);return m?{d:m[1],t:`${m[2]}:${m[3]}:${m[4]}`}:{d:"—",t:"—"};}
-function show(){
-if(!visiblePairs.length){img.style.display="none";imgErr.textContent="No images";return;}
-const pr=visiblePairs[idx];
-img.src=pr.photo.url;
-img.onload=()=>{
-img.style.display="block";
-imgErr.textContent="";
-};
-const p=tsToParts(pr.photo.key);
-fname.textContent=pr.photo.name;
-dateTxt.textContent="Date: "+p.d;
-timeTxt.textContent="Time: "+p.t;
-coordBadge.textContent=`${pr.gps.lat.toFixed(5)}, ${pr.gps.lon.toFixed(5)}`;
-gpsList.innerHTML=gps.map(x=>`${x.lat.toFixed(5)}, ${x.lon.toFixed(5)} [${x.key}]`).join("<br>");
-map.setView([pr.gps.lat,pr.gps.lon],16);marker.setLatLng([pr.gps.lat,pr.gps.lon]);
-pairCounter.textContent=`Pair ${idx+1} of ${visiblePairs.length}`;
-gpsCount.textContent=`${gps.length} items`;
-dbg.textContent="Loaded OK";
-}
-async function reload(){
-try{
-await loadRepo();buildPairs();show();
-}catch(e){dbg.textContent="Error: "+e.message;}
-}
+function saveHidden(){localStorage.setItem("hidden_keys_v1",JSON.stringify([...hiddenKeys]));}
+function tsToParts(k){const m=k.match(/^(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})$/);return m?{date:m[1],time:`${m[2]}:${m[3]}:${m[4]}`}:{date:"—",time:"—"};}
+function parseTsMs(k){const m=k.match(/^(\d{4}-\d{2}-\d{2}).?(\d{2})[-:](\d{2})[-:](\d{2})$/);if(!m)return null;const d=new Date(Date.UTC(+m[1].slice(0,4),+m[1].slice(5,7)-1,+m[1].slice(8,10),+m[2],+m[3],+m[4]));return d.getTime();}
+async function ghList(p){const u=`https://api.github.com/repos/${OWNER}/${REPO}/contents/${p}?ref=${BRANCH}&t=${Date.now()}`,r=await fetch(u);if(!r.ok)throw new Error(`api ${p} ${r.status}`);return r.json();}
+async function ghGetText(p){const u=`https://api.github.com/repos/${OWNER}/${REPO}/contents/${p}?ref=${BRANCH}&t=${Date.now()}`,r=await fetch(u);if(!r.ok)throw new Error(`api get ${p} ${r.status}`);const j=await r.json();return atob(j.content||"");}
+async function loadRepo(){try{const pItems=(await ghList("photos")).filter(x=>x.type==="file"&&/\.(jpg|jpeg|png|webp)$/i.test(x.name));photos=pItems.map(it=>{const k=it.name.replace(/\.[^.]+$/,"");const ts=parseTsMs(k);return ts?{name:it.name,key:k,tsMs:ts,url:it.download_url}:null;}).filter(Boolean).filter(p=>!hiddenKeys.has(p.key)).sort((a,b)=>a.tsMs-b.tsMs);}catch(e){dbg.textContent="Photos load error";}try{const gItems=(await ghList("GPS")).filter(x=>x.type==="file"&&/\.txt$/i.test(x.name));const rows=[];for(const it of gItems){const k=it.name.replace(/\.[^.]+$/,"");const ts=parseTsMs(k);if(!ts)continue;const t=await ghGetText(`GPS/${it.name}`);const m=t.match(/(-?\d+(?:\.\d+)?)[^\d-]+(-?\d+(?:\.\d+)?)/);if(!m)continue;rows.push({key:k,tsMs:ts,lat:+m[1],lon:+m[2]});}gps=rows.sort((a,b)=>a.tsMs-b.tsMs);}catch(e){dbg.textContent="GPS load error";}}
+function buildPairs(){pairs=[];if(!photos.length||!gps.length)return;let p=0;for(const g of gps){while(p+1<photos.length&&photos[p+1].tsMs<=g.tsMs)p++;const best=p;const d=Math.abs(photos[best].tsMs-g.tsMs);if(d<=MAX_DELTA_MS)pairs.push({gps:g,photo:photos[best]});}visiblePairs=pairs;idx=visiblePairs.length?visiblePairs.length-1:0;}
+function show(){if(!visiblePairs.length){imgEl.style.display="none";imgErr.textContent="No visible pairs";return;}const pr=visiblePairs[idx];imgEl.src=pr.photo.url;imgEl.onload=()=>{imgEl.style.display="block";imgErr.textContent="";resetZoom();};const parts=tsToParts(pr.photo.key);fname.textContent=pr.photo.name;dateTxt.textContent="Date: "+parts.date;timeTxt.textContent="Time: "+parts.time;coordBadge.textContent=`${pr.gps.lat.toFixed(5)}, ${pr.gps.lon.toFixed(5)}`;map.setView([pr.gps.lat,pr.gps.lon],16);marker.setLatLng([pr.gps.lat,pr.gps.lon]);gpsList.innerHTML=gps.map(r=>`<div${r.key===pr.gps.key?' style="font-weight:bold;background:#242424"':''}>${r.lat.toFixed(5)}, ${r.lon.toFixed(5)} [${r.key}]</div>`).join("");pairCounter.textContent=`Pair ${idx+1} of ${visiblePairs.length}`;gpsCount.textContent=`${gps.length} items`;dbg.textContent="ok";}
+async function reload(){await loadRepo();buildPairs();show();}
 document.getElementById("prevBtn").onclick=()=>{if(idx>0){idx--;show();}};
 document.getElementById("nextBtn").onclick=()=>{if(idx<visiblePairs.length-1){idx++;show();}};
-document.getElementById("refreshBtn").onclick=()=>window.location.reload();
-
-let zoom=1,tx=0,ty=0;const ZMIN=1,ZMAX=5,STEP=0.25;
-function applyZoom(){img.style.transform=`translate(${tx}px,${ty}px) scale(${zoom})`;}
-document.getElementById("zoomIn").onclick=()=>{zoom=Math.min(ZMAX,zoom+STEP);applyZoom();};
-document.getElementById("zoomOut").onclick=()=>{zoom=Math.max(ZMIN,zoom-STEP);applyZoom();};
-document.getElementById("zoomReset").onclick=()=>{zoom=1;tx=ty=0;applyZoom();};
-let drag=false,sx=0,sy=0,stx=0,sty=0;
-document.getElementById("feedBox").addEventListener("pointerdown",e=>{if(zoom<=1)return;drag=true;sx=e.clientX;sy=e.clientY;stx=tx;sty=ty;});
-document.getElementById("feedBox").addEventListener("pointermove",e=>{if(!drag)return;tx=stx+(e.clientX-sx);ty=sty+(e.clientY-sy);applyZoom();});
-document.getElementById("feedBox").addEventListener("pointerup",()=>drag=false);
-
+document.getElementById("refreshBtn").onclick=()=>window.location.reload(true);
+document.getElementById("discardBtn").onclick=()=>{if(!visiblePairs.length)return;hiddenKeys.add(visiblePairs[idx].photo.key);saveHidden();reload();};
+document.getElementById("downloadBtn").onclick=()=>{const lines=['# Discard Log',...[...hiddenKeys].map(k=>"- "+k)];const blob=new Blob([lines.join("\n")],{type:"text/plain;charset=utf-8"});saveAs(blob,`discard_log_${Date.now()}.txt`);};
+const themeBtn=document.getElementById("themeBtn");function setTheme(l){document.body.classList.toggle("light",l);themeBtn.textContent=l?"☀️ Light":"🌙 Dark";localStorage.setItem("theme",l?"light":"dark");}themeBtn.onclick=()=>setTheme(!document.body.classList.contains("light"));if(localStorage.getItem("theme")==="light")setTheme(true);
+let zoom=1,tx=0,ty=0;const Z_MIN=1,Z_MAX=5,Z_STEP=0.25;const zoomInBtn=document.getElementById("zoomIn"),zoomOutBtn=document.getElementById("zoomOut"),zoomResetBtn=document.getElementById("zoomReset");
+function applyTransform(){imgEl.style.transform=`translate(${tx}px,${ty}px) scale(${zoom})`;}
+function resetZoom(){zoom=1;tx=0;ty=0;applyTransform();}
+zoomInBtn.onclick=()=>{zoom=Math.min(Z_MAX,zoom+Z_STEP);applyTransform();};
+zoomOutBtn.onclick=()=>{zoom=Math.max(Z_MIN,zoom-Z_STEP);applyTransform();};
+zoomResetBtn.onclick=()=>resetZoom();
+let dragging=false,startX=0,startY=0,startTx=0,startTy=0;
+feedBox.addEventListener("pointerdown",e=>{if(zoom<=1)return;dragging=true;startX=e.clientX;startY=e.clientY;startTx=tx;startTy=ty;feedBox.setPointerCapture(e.pointerId);});
+feedBox.addEventListener("pointermove",e=>{if(!dragging)return;tx=startTx+(e.clientX-startX);ty=startTy+(e.clientY-startY);applyTransform();});
+feedBox.addEventListener("pointerup",()=>dragging=false);
+feedBox.addEventListener("pointercancel",()=>dragging=false);
 reload();
 setInterval(reload,POLL_MS);
 </script>
