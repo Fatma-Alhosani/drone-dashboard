@@ -1,93 +1,88 @@
 Smart Drones and Computer Vision for Smoking Detection
-
-Overview
-This project by Senior Design Project Group 6 (AUS, Spring 2025) builds an autonomous drone system that detects smoking in areas using AI and computer vision.
-It combines a Raspberry Pi, Flask server, Supabase cloud, and a web dashboard to capture, process, and visualize detections with GPS data.
-
-System Components
-1. Drone (Raspberry Pi)
-Detects humans using a TensorFlow Lite model.
-
-
-Captures frames, attaches GPS data (via MAVLink), and uploads to the Flask server.
-
-
-2. Flask Server
-Receives images and GPS data at /api/uploads.
-
-
-Runs YOLO-based cigarette detection.
-
-
-Uploads to Supabase Storage under:
-
-
-photos_pre – initial detections.
-
-
-photos_post – confirmed cigarette detections.
-
-
+Senior Design Project – American University of Sharjah
+This repository contains the full implementation of our drone-based smoking-violation detection system.
+The project combines:
+autonomous drone missions
+real-time image capture
+computer vision processing
+Supabase storage
+a full web dashboard for monitoring smoking events
+The system runs in three major components:
+1. Raspberry Pi (on the drone)
+Runs YOLO detection
+Captures frames during missions
+Sends images + GPS JSON to the PC server
+2. PC Server (Flask + YOLO)
+Receives images
+Runs high-resolution cigarette detection
+Applies veto logic
+Uploads annotated results to Supabase
+Powers the dashboard backend
 3. Web Dashboard
-Built with HTML, CSS, and JS (Leaflet Map).
-
-
-Displays detections and GPS locations.
-
-
-Allows refresh, navigation, and deletion of records.
-
-
-4. Supabase Cloud
-Stores images, GPS text files, and documentation.
-
-
-Secure access using environment variables in .env.
-
-
-
-Data Flow
-Drone → Flask Server → Supabase → Dashboard
-
-
-
-Run Instructions
-Flask Server
-pip install flask supabase python-dotenv requests ultralytics opencv-python
+Displays detected violations
+Shows GPS coordinates + timestamps
+Allows zooming, panning, next/previous navigation
+Allows deleting results
+Provides new-detection notifications
+Repository Structure
+root/
+│
+├── README.md                 ← Main project overview
+│
+├── pc/                       ← PC server processing pipeline
+│   ├── README.md             ← Detailed PC-side documentation
+│   ├── app.py                ← Flask server + cigarette detection
+│   ├── detect_and_crop_green_box.py
+│   └── templates/
+│       └── index.html        ← Web dashboard UI
+│
+└── rpi/                      ← Raspberry Pi drone-side code
+    ├── README.md             ← RPi documentation
+    └── mission.py            ← Captures frames + YOLO + uploads to PC
+System Summary
+Drone (Raspberry Pi + Pixhawk)
+Executes autonomous missions using Pixhawk Mission Planner
+Captures live images via the Pi camera
+Performs preliminary detection to draw a green bounding box
+Sends every frame + GPS JSON to the PC server
+Designed for stable outdoor low-altitude missions
+PC Server (Flask backend)
+Receives uploads from the drone
+Crops the green-box region
+Runs two YOLO models:
+Cigarette model
+Veto model (cup/bottle detector)
+Annotates detections and uploads them to Supabase
+Deletes non-useful raw images via cleanup thread
+Provides dashboard API (/list, /login, /delete)
+Dashboard (index.html)
+Displays processed images
+Shows GPS location on Leaflet map
+Supports zooming, panning, and next/previous browsing
+Allows deleting detections
+Auto-refreshes signed URLs every hour
+Can notify operator of new detections
+Technologies Used
+Python (Flask, OpenCV, NumPy)
+YOLO (Ultralytics – cigarette + veto models)
+Supabase Storage & Authentication
+Leaflet.js
+Pixhawk + Mission Planner
+Raspberry Pi camera
+How to Run the System End-to-End
+1. Start the PC server
+cd pc
 python app.py
-
-Raspberry Pi
-Place detect.tflite beside Full_Mission.py.
-
-
-Update PC_UPLOAD_URL_API with the Flask server IP.
-
-
-Run: python3 Full_Mission.py
-
-Dashboard
-Access via browser: http://<server-ip>:8080
-
-Team
-Group 6 – American University of Sharjah
+2. Start Raspberry Pi flight code
+cd rpi
+python mission.py
+3. Open the dashboard
+http://<pc-ip>:8080
+Authors
 Turki Alzahrani
-
-
 Wajeeh Dalbah
-
-
 Fatima Alhosani
-
-
 Riya Garissa
-
-
- Advisors: Prof. Taha Landolsi, Prof. Gheith Abandah
-
-
-
-License
-Academic submission for COE 491 – Senior Design Project II.
-For research and educational use only.
-
-
+Advisors: Prof. Taha Landolsi & Prof. Gheith Abandah
+Department of Computer Science and Engineering
+American University of Sharjah
