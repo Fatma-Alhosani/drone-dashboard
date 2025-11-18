@@ -1,80 +1,128 @@
-How the System Works
+# PC Server – Detection Pipeline
+Flask Processing Backend + YOLO + Supabase Dashboard
 
-1. Raspberry Pi uploads an image  
-   The Pi sends:  
-   The JPEG image  
-   A JSON string containing GPS data  
-   To: POST /api/uploads  
+This directory contains the full computer-vision backend and dashboard server used to process images sent from the Raspberry Pi during drone missions.
+The PC performs high-resolution cigarette detection, veto filtering, image annotation, GPS pairing, and dashboard hosting.
 
-2. The server saves raw data  
-   Uploads are stored in: photos_pre bucket  
+---
 
-3. Cropping stage crop_green_box() removes the green frame and returns:  
-   Crop offsets  
-   The cropped image  
-   If cropping fails, the system falls back to the original image.  
+## Contents
 
-4. Cigarette detection  
-   Runs YOLO only on the cropped image.  
+pc/
+|
+|-- README.md                       <- This file
+|-- app.py                          <- Main Flask server + YOLO pipeline
+|-- detect_and_crop_green_box.py    <- Green-box crop utility
+`-- templates/
+    `-- index.html                  <- Dashboard front-end
 
-5. Veto detection  
-   Runs a second YOLO model on the full image.  
-   If a cup or bottle is found, the image is discarded (no upload to photos_post).  
+---
 
-6. Annotated upload  
-   If cigarette detected and veto passes:  
-   Full image is drawn with bounding boxes  
-   The annotated JPEG is uploaded to photos_post  
+## app.py (Main Server)
 
-7. Dashboard listing  
-   A signed URL for each image is generated dynamically.  
-   GPS text is loaded from the gps bucket.  
+app.py is the heart of the system. It provides:
 
-8. Cleanup thread  
-   Every hour: All objects in photos_pre are deleted  
-   Annotated images remain untouched  
+### 1. Upload processing
+- Receives JPEG frames and GPS JSON from the Raspberry Pi
+- Saves raw uploads to Supabase photos_pre and gps buckets
+- Crops the frame using green-box detection
+- Runs cigarette detection using a custom YOLO model
+- Runs cup/bottle veto detection using a second YOLO model
+- Draws bounding boxes on original frames
+- Uploads annotated results to Supabase photos_post
 
+### 2. Dashboard backend
+Provides JSON endpoints for:
+- Login (/api/login)
+- List all detections (/api/list)
+- Delete detections (/api/discard)
+- Signed URL refresh
+- Session management
 
-API Endpoints  
+### 3. Cleanup worker
+A background thread removes all images from photos_pre every hour to prevent Supabase storage growth.
 
-POST /api/login  
-Authenticate using Supabase Auth  
+---
 
-POST /api/logout  
-Logout user  
+## detect_and_crop_green_box.py
 
-GET /api/me  
-Check user session  
+This script isolates the green bounding box drawn by the Raspberry Pi YOLO preview.
 
-POST /api/uploads  
-Main upload endpoint for Raspberry Pi  
+It returns:
+- x_offset
+- y_offset
+- cropped_image
 
-GET /api/list  
-Returns JSON list of processed images with signed URLs and GPS  
+The PC detection pipeline then applies cigarette detection only inside this region for efficiency and accuracy.
 
-DELETE /api/discard?file=FILENAME  
-Deletes the image and its GPS file  
+If no green box is detected, the function returns:
+(None, None, None)
+and the full image is used instead.
 
+---
 
-Running the Server  
-python app.py  
+## Dashboard (index.html)
 
-Server runs on:  
-http://0.0.0.0:8080  
+The dashboard displays all detected smoking events:
 
+- High-resolution annotated images
+- GPS coordinates on a Leaflet map
+- Timestamps parsed from filenames
+- Navigation buttons: previous, next, refresh, discard
+- Zoom and pan tools for each image
+- Real-time notifications when new detections arrive
+- Authentication via Supabase Auth (email + password)
 
-Folder Structure Example  
+All images are loaded from Supabase through signed URLs, refreshed hourly to avoid expiration.
 
-pc-server/  
-│  
-├── app.py  
-├── detect_and_crop_green_box.py  
-│  
-├── .env  
-│  
-├── models/  
-│   ├── cigarette_best.pt  
-│   └── yolo12m.pt  
-│  
-└── templates/  
-    └── index.html
+---
+
+## Requirements
+
+Install dependencies:
+pip install flask supabase python-dotenv ultralytics opencv-python numpy
+
+Environment variables (.env):
+
+SUPABASE_URL=...
+SUPABASE_SERVICE_KEY=...
+
+SUPABASE_PHOTOS_BUCKET=photos_post
+SUPABASE_PHOTOS_PRE_BUCKET=photos_pre
+SUPABASE_GPS_BUCKET=gps
+
+MODELS_DIR=path/to/models
+CIG_WEIGHTS=cigarette_best.pt
+VETO_WEIGHTS=yolo12m.pt
+
+CIG_IMGSZ=1536
+CIG_CONF=0.45
+CIG_IOU=0.45
+CIG_CLASS_ID=0
+
+VETO_IMGSZ=640
+VETO_CONF=0.35
+
+FLASK_SECRET_KEY=some-secret
+
+Models must be placed in the directory specified by MODELS_DIR.
+
+---
+
+## Running the PC Server
+
+python app.py
+
+The server runs at:
+http://0.0.0.0:8080
+
+Make sure the Raspberry Pi points its upload requests to this machine.
+
+---
+
+## Notes
+
+- Detections and GPS files remain in photos_post until manually deleted.
+- photos_pre bucket is automatically cleaned hourly.
+- Two YOLO models are used: cigarette detector and cup/bottle veto model.
+- Green-box cropping improves accuracy and reduces false positives.
