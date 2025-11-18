@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Drone Surveillance Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+<style>
+
+
+/* ----- Global colors + layout tokens ----- */
+:root { --bg:#0f0f0f; --card:#1b1b1b; --sub:#161616; --accent:#4caf50; --muted:#aaa; --border:#333; --danger:#c33; --highlight:#2e2e2e; }
+body {margin:0;background:var(--bg);color:#fff;font-family:system-ui,Segoe UI,Arial,sans-serif;}
+header {background:#000;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;}
+.status{display:flex;align-items:center;gap:8px;font-size:13px}
+.dot{width:10px;height:10px;background:var(--accent);border-radius:50%}
+.container{max-width:85%;margin:25px auto;}
+h2{color:var(--accent);margin:0 0 16px 8px}
+
+/* ----- Main dashboard layout ----- */
+.grid{display:grid;grid-template-columns:1.1fr 1fr;gap:24px;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;}
+.hdr{display:flex;justify-content:space-between;align-items:center;font-weight:bold;font-size:15px;margin-bottom:6px;}
+.counter{background:var(--sub);padding:4px 8px;border-radius:6px;border:1px solid var(--border);color:var(--muted);}
+.feed{position:relative;background:#0a0a0a;border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:280px;}
+.feed img{width:100%;height:auto;display:none;transition:transform 0.25s ease;cursor:grab;}
+.zoom-controls{position:absolute;right:10px;top:10px;display:flex;gap:6px;z-index:10;}
+.zoom-btn{background:rgba(0,0,0,0.6);border:1px solid var(--border);color:#fff;border-radius:6px;padding:6px 8px;cursor:pointer;}
+.bottom-info{display:flex;justify-content:space-between;margin-top:8px;gap:6px;}
+.bottom-info span{flex:1;text-align:center;background:var(--sub);border:1px solid var(--border);border-radius:8px;padding:6px;color:var(--muted);font-size:13px;}
+
+/* ----- GPS panel (right side) ----- */
+#map{height:300px;border-radius:10px;}
+.gps-header{background:var(--highlight);padding:6px 10px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:6px;}
+.gps-list{margin-top:8px;background:var(--sub);border:1px solid var(--border);border-radius:8px;max-height:180px;overflow:auto;font-family:monospace;font-size:13px;padding:6px;}
+
+/* ----- Bottom controls & generic buttons ----- */
+.controls{display:flex;justify-content:center;align-items:center;margin-top:20px;gap:10px;}
+.btn{padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--sub);color:#fff;cursor:pointer;}
+.btn:hover{background:#242424;}
+.btn.danger{background:#621010;border-color:#822020;}
+.btn.green{background:#1d4e27;border-color:#296b38;}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;background:var(--card);border:1px solid var(--border);border-radius:10px;width:420px;max-width:92vw;padding:12px 16px;display:none;box-shadow:0 10px 40px rgba(0,0,0,0.4);}
+
+/* ----- Toast-style notification card ----- */
+#toast h4{margin:0;font-size:15px;}
+#toast p{margin:6px 0 10px 0;font-size:13px;color:var(--muted);}
+#toast .row{display:flex;gap:8px;justify-content:flex-end;}
+#toast .row button{border:1px solid var(--border);background:#222;color:#fff;border-radius:6px;padding:6px 10px;cursor:pointer;}
+
+/* Login */
+#loginPanel{max-width:420px;margin:80px auto;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;display:none;}
+#loginPanel h3{margin-top:0;}
+#loginPanel input{width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:#121212;color:#fff;margin:6px 0 12px;}
+#loginPanel .err{color:#ff6c6c;font-size:12px;min-height:16px;}
+</style>
+</head>
+<body>
+<header>
+  <div>Drone surveillance dashboard</div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <button class="btn" id="logoutBtn" type="button" style="display:none">Logout</button>
+    <div class="status"><div class="dot"></div> <span id="hdrStatus">Operational</span></div>
+  </div>
+</header>
+
+<!-- Login -->
+<div id="loginPanel">
+  <h3>Sign in</h3>
+  <form id="loginForm">
+    <input type="email" name="email" placeholder="Email" required />
+    <input type="password" name="password" placeholder="Password" required />
+    <button class="btn green" type="submit">Login</button>
+    <div class="err" id="loginErr"></div>
+  </form>
+</div>
+
+<div class="container" id="dashboard" style="display:none">
+  <h2>Possible violations</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="hdr"><span>Images</span><span id="fname" class="counter">—</span></div>
+      <div class="feed">
+        <div class="zoom-controls">
+          <button id="zoomIn" class="zoom-btn">＋</button>
+          <button id="zoomOut" class="zoom-btn">−</button>
+          <button id="zoomReset" class="zoom-btn">Reset</button>
+        </div>
+        <img id="feedImg" alt="">
+      </div>
+      <div class="bottom-info">
+        <span id="dateTxt">Date: —</span><span id="timeTxt">Time: —</span><span id="pairCounter">Pair 0 of 0</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hdr"><span>GPS coordinates</span><span id="gpsCount">0 items</span></div>
+      <div class="gps-header"><span>Current gps location</span><span id="gpsNow" class="counter">—</span></div>
+      <div id="map"></div>
+      <div class="gps-list" id="gpsList"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn" id="prevBtn">Previous</button>
+    <button class="btn" id="refreshBtn">Refresh</button>
+    <button class="btn" id="nextBtn">Next</button>
+    <button class="btn danger" id="discardBtn">Discard</button>
+  </div>
+
+  <div id="dbg" style="margin-top:10px;color:#999;font-size:13px;">dbg: —</div>
+</div>
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script>
+
+// ----- Global state for gallery, zoom & polling -----
+let items=[],idx=0,zoom=1,tx=0,ty=0,dragging=false,startX=0,startY=0;
+let authed=false;
+let unseenQueue=0, newestIndex=null, pollingTimer=null;
+
+// Notification control flags
+let firstLoadDone=false;          // suppress toast on first successful load
+let suppressNextNotify=false;     // set true before manual/hourly refreshes
+
+// ----- Cached DOM references for fast updates 
+
+const img=document.getElementById('feedImg'),fname=document.getElementById('fname'),
+dateTxt=document.getElementById('dateTxt'),timeTxt=document.getElementById('timeTxt'),
+pairCounter=document.getElementById('pairCounter'),gpsNow=document.getElementById('gpsNow'),
+gpsList=document.getElementById('gpsList'),gpsCount=document.getElementById('gpsCount'),
+dbg=document.getElementById('dbg');
+
+
+// ----- Leaflet map setup for GPS visualization -----
+const map=L.map('map').setView([0,0],2);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:"© OpenStreetMap"}).addTo(map);
+const marker=L.marker([0,0]).addTo(map);
+
+// Parse timestamp (date/time) from Supabase filename convention
+function tsParts(fn){const m=fn.match(/(\d{4}-\d{2}-\d{2})[_-](\d{2})[-_](\d{2})[-_](\d{2})/);return m?{date:m[1],time:`${m[2]}:${m[3]}:${m[4]}`}:{date:'—',time:'—'};}
+
+// Toast for batch "new images" notification with View/Dismiss actions
+function showToastBatch(count, onView, onDismiss){
+  if(!authed) return; // never show on login
+  const t=document.getElementById('toast');
+  const title = `${count} new smoking images detected`;
+  t.innerHTML=`<h4>${title}</h4>
+    <p>They have been added to the list.</p>
+    <div class="row">
+      <button id="dismissBtn">Dismiss</button>
+      <button id="viewBtn">View</button>
+    </div>`;
+  t.style.display='block';
+  document.getElementById('dismissBtn').onclick=()=>{t.style.display='none'; onDismiss&&onDismiss();};
+  document.getElementById('viewBtn').onclick=()=>{t.style.display='none'; onView&&onView();};
+}
+
+// Fetch image+GPS list from server, diff with current items, and optionally notify
+async function loadList(){
+  try{
+    const r=await fetch("/api/list");
+    const data=await r.json();
+    if(!data.ok)throw new Error(data.error);
+
+    // Preload all image URLs to make navigation feel instant
+    for(const item of data.items){ const pre=new Image(); pre.src=item.url; }
+    // Compute which filenames are new since last fetch
+
+    const oldSet = new Set(items.map(it=>it.filename));
+    const newAll = data.items.slice();
+    const added = newAll.filter(it=>!oldSet.has(it.filename));
+
+    items = newAll;
+
+    // Handle case where there is no data at all
+    if(items.length===0){
+      idx=0; img.style.display='none'; fname.textContent='—';
+      dateTxt.textContent='Date: —'; timeTxt.textContent='Time: —';
+      pairCounter.textContent='Pair 0 of 0'; gpsList.textContent=''; gpsNow.textContent='—';
+      gpsCount.textContent='0 items'; dbg.textContent='dbg: ok';
+      firstLoadDone = true; // do not notify on empty start
+      return;
+    }
+
+    gpsCount.textContent=`${items.length} items`;
+
+// Only on the very first load, automatically show the newest image.
+// After that, do NOT jump — keep the user's current position.
+    if(!firstLoadDone){
+      idx = items.length - 1;
+      showItem();
+      firstLoadDone = true;
+    }else{
+      // keep current view stable
+      pairCounter.textContent=`Pair ${idx+1} of ${items.length}`;
+    }
+
+    // notify only if there are actual new items AND it's not a suppressed refresh
+    if(authed && added.length>0 && !suppressNextNotify){
+      unseenQueue += added.length;
+      newestIndex = items.length - 1;
+      showToastBatch(unseenQueue,
+        () => { idx = newestIndex; unseenQueue=0; newestIndex=null; showItem(); },
+        () => { unseenQueue=0; newestIndex=null; }
+      );
+    }
+    suppressNextNotify = false;  // reset after each load
+
+    dbg.textContent='dbg: ok';
+  }catch(e){ dbg.textContent='dbg: '+e.message; }
+}
+
+
+// Update UI to show the currently selected image + GPS pair
+function showItem(){
+  if(!items.length){ return; }
+  const it=items[idx];
+  img.src=it.url;
+  img.onload=()=>{img.style.display='block';resetZoom();};
+  fname.textContent=it.filename;
+  const p=tsParts(it.filename);
+  dateTxt.textContent='Date: '+p.date;
+  timeTxt.textContent='Time: '+p.time;
+  pairCounter.textContent=`Pair ${items.length? (idx+1):0} of ${items.length}`;
+  gpsList.textContent=it.gps_text||'No GPS data';
+  const n=(it.gps_text||'').match(/-?\d+\.\d+/g);
+  if(n&&n.length>=2){const lat=+n[0],lon=+n[1];gpsNow.textContent=`${lat.toFixed(5)}, ${lon.toFixed(5)}`;marker.setLatLng([lat,lon]);map.setView([lat,lon],17);}else{gpsNow.textContent='—';}
+}
+
+
+// ----- Gallery navigation & refresh controls -----
+document.getElementById('prevBtn').onclick=()=>{if(idx>0){idx--;showItem();}};
+document.getElementById('nextBtn').onclick=()=>{if(idx<items.length-1){idx++;showItem();}};
+// Full-page reload keeps logic simple; notification is suppressed for this manual refresh
+document.getElementById('refreshBtn').onclick=()=>{ suppressNextNotify=true; window.location.reload(true); };
+
+
+// Discard current image + its GPS file (calls backend /api/discard)
+document.getElementById('discardBtn').onclick=async()=>{
+  if(!items.length)return;
+  const f=items[idx].filename;
+  if(!confirm(`Delete ${f}?`))return;
+  try{
+    const r=await fetch(`/api/discard?file=${encodeURIComponent(f)}`,{method:'DELETE'});
+    const d=await r.json();
+    const t=document.getElementById('toast');
+    if(d.ok){
+      items.splice(idx,1);
+      if(items.length===0){
+        idx=0; img.style.display='none'; fname.textContent='—';
+        dateTxt.textContent='Date: —'; timeTxt.textContent='Time: —';
+        pairCounter.textContent='Pair 0 of 0'; gpsList.textContent=''; gpsNow.textContent='—';
+        gpsCount.textContent='0 items';
+      }else{
+        if(idx>items.length-1) idx = items.length-1;
+        showItem();
+        gpsCount.textContent=`${items.length} items`;
+      }
+      t.innerHTML=`<h4>Deleted</h4><p>${f} and its GPS file removed.</p>`;
+      t.style.display='block'; setTimeout(()=>t.style.display='none',2000);
+    }else{
+      t.innerHTML=`<h4>Error</h4><p>${d.error}</p>`; t.style.display='block';
+      setTimeout(()=>t.style.display='none',2500);
+    }
+  }catch(e){
+    const t=document.getElementById('toast');
+    t.innerHTML=`<h4>Error</h4><p>${e.message}</p>`;
+    t.style.display='block'; setTimeout(()=>t.style.display='none',2500);
+  }
+};
+
+// ----- Zoom & pan logic for the image viewer -----
+function applyTransform(){img.style.transform=`translate(${tx}px,${ty}px) scale(${zoom})`;}
+function resetZoom(){zoom=1;tx=ty=0;applyTransform();}
+document.getElementById('zoomIn').onclick=()=>{zoom=Math.min(5,zoom+0.25);applyTransform();};
+document.getElementById('zoomOut').onclick=()=>{zoom=Math.max(1,zoom-0.25);applyTransform();};
+document.getElementById('zoomReset').onclick=()=>resetZoom();
+img.addEventListener('mousedown',e=>{dragging=true;startX=e.clientX-tx;startY=e.clientY-ty;img.style.cursor='grabbing';});
+window.addEventListener('mouseup',()=>{dragging=false;img.style.cursor='grab';});
+window.addEventListener('mousemove',e=>{if(!dragging)return;tx=e.clientX-startX;ty=e.clientY-startY;applyTransform();});
+window.addEventListener('keydown',e=>{if(e.key==='ArrowRight')document.getElementById('nextBtn').click();if(e.key==='ArrowLeft')document.getElementById('prevBtn').click();});
+
+// ---- Auth UI wiring ----
+const loginPanel = document.getElementById('loginPanel');
+const dashboard  = document.getElementById('dashboard');
+const loginForm  = document.getElementById('loginForm');
+const loginErr   = document.getElementById('loginErr');
+const logoutBtn  = document.getElementById('logoutBtn');
+
+// Check whether the user has a valid session; show login or dashboard accordingly
+async function checkAuthAndStart(){
+  try{
+    const r = await fetch('/api/me');
+    const m = await r.json();
+    authed = !!m.authenticated;
+    if(authed){
+      loginPanel.style.display='none';
+      dashboard.style.display='block';
+      setTimeout(()=>map.invalidateSize(), 200);  // fix Leaflet layout
+      if(pollingTimer) clearInterval(pollingTimer);
+      firstLoadDone=false;            // new session flow
+      suppressNextNotify=true;        // suppress notification on this initial load
+      await loadList();
+      pollingTimer = setInterval(loadList, 5000);
+      logoutBtn.style.display='inline-block';
+      document.getElementById('hdrStatus').textContent = 'Operational (signed in)';
+    }else{
+      dashboard.style.display='none';
+      loginPanel.style.display='block';
+      if(pollingTimer) { clearInterval(pollingTimer); pollingTimer=null; }
+      logoutBtn.style.display='none';
+      document.getElementById('hdrStatus').textContent = 'Operational (login required)';
+    }
+  }catch(e){ console.error(e); }
+}
+
+
+// Handle login form submit → POST /api/login then refresh auth state
+loginForm.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  loginErr.textContent='';
+  const fd = new FormData(loginForm);
+  const email = fd.get('email'); const password = fd.get('password');
+  try{
+    const r = await fetch('/api/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email,password})});
+    const d = await r.json();
+    if(!d.ok){ loginErr.textContent = d.error || 'Login failed'; return; }
+    await checkAuthAndStart();
+  }catch(err){ loginErr.textContent = err.message; }
+});
+
+// Logout button → POST /api/logout then re-check session
+logoutBtn.addEventListener('click', async ()=>{
+  await fetch('/api/logout', {method:'POST'});
+  await checkAuthAndStart();
+});
+
+// Initial auth check when page loads
+checkAuthAndStart();
+
+// Hourly signed-URL renewal (no toast unless new arrivals)
+setInterval(()=>{
+  if(!authed) return;
+  suppressNextNotify = true;   // this refresh should not create a "new images" toast
+  loadList();
+},3600*1000);
+</script>
+</body>
+</html>
+
+
