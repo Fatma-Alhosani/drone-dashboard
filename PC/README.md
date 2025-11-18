@@ -7,7 +7,7 @@ The PC performs high-resolution cigarette detection, veto filtering, image annot
 ---
 
 ## Contents
-
+```
 pc/
 |
 |-- README.md                       <- This file
@@ -15,7 +15,7 @@ pc/
 |-- detect_and_crop_green_box.py    <- Green-box crop utility
 `-- templates/
     `-- index.html                  <- Dashboard front-end
-
+```
 ---
 
 ## app.py (Main Server)
