@@ -1,0 +1,380 @@
+# app.py
+import os
+import traceback
+import threading
+import time
+import tempfile
+import logging
+import warnings
+
+
+from flask import Flask, request, jsonify, render_template, session
+from supabase import create_client
+from dotenv import load_dotenv
+
+
+import numpy as np
+import cv2
+from ultralytics import YOLO
+from detect_and_crop_green_box import crop_green_box
+
+
+# Silence the Ultralytics "'source' is missing" warning
+warnings.filterwarnings(
+    "ignore",
+    message="'source' is missing. Using 'source=",
+    category=UserWarning,
+    module="ultralytics"
+)
+
+
+# Also reduce Ultralytics logger noise if any
+logging.getLogger("ultralytics").setLevel(logging.ERROR)
+
+
+
+
+# ------------------- LOAD CONFIG -------------------
+load_dotenv()
+
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+
+
+PHOTOS_POST_BUCKET = os.getenv("SUPABASE_PHOTOS_BUCKET", "photos_post")
+PHOTOS_PRE_BUCKET  = os.getenv("SUPABASE_PHOTOS_PRE_BUCKET", "photos_pre")
+GPS_BUCKET         = os.getenv("SUPABASE_GPS_BUCKET", "gps")
+
+
+# Model paths (as requested)
+MODELS_DIR   = os.getenv("MODELS_DIR", r"C:\Users\desk-14\Desktop\Smoking\models")
+CIG_WEIGHTS  = os.getenv("CIG_WEIGHTS",  os.path.join(MODELS_DIR, "cigarette_best.pt"))
+VETO_WEIGHTS = os.getenv("VETO_WEIGHTS", os.path.join(MODELS_DIR, "yolo12m.pt"))  # COCO-style
+
+
+# Cigarette model params
+IMGSZ_CIG    = int(os.getenv("CIG_IMGSZ", "1536"))
+CONF_CIG     = float(os.getenv("CIG_CONF", "0.45"))
+IOU_CIG      = float(os.getenv("CIG_IOU",  "0.45"))
+CIG_CLASS_ID = int(os.getenv("CIG_CLASS_ID", "0"))
+
+
+# Veto (cup/bottle) params
+IMGSZ_VETO   = int(os.getenv("VETO_IMGSZ", "640"))
+CONF_VETO    = float(os.getenv("VETO_CONF", "0.35"))
+
+
+SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "change-this-in-env")
+# ---------------------------------------------------
+
+
+app = Flask(__name__)
+app.secret_key = SECRET_KEY
+
+
+# --- silence werkzeug access logs (GET /api/list spam) ---
+logging.getLogger("werkzeug").setLevel(logging.ERROR)
+try:
+    from werkzeug.serving import WSGIRequestHandler
+    WSGIRequestHandler.log_request = lambda *a, **k: None
+except Exception:
+    pass
+
+
+# IMPORTANT: keep create_client with just URL and KEY
+supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
+
+# ------------------- YOLO MODELS -------------------
+cig_model  = YOLO(CIG_WEIGHTS)
+veto_model = YOLO(VETO_WEIGHTS)
+print(f"[INFO] Loaded cigarette model: {CIG_WEIGHTS}")
+print(f"[INFO] Loaded veto model (cup/bottle): {VETO_WEIGHTS}")
+
+
+# Warmup both models; pass source= explicitly to avoid Ultralytics 'source missing' warning
+_dummy = np.zeros((640, 640, 3), dtype=np.uint8)
+_ = cig_model.predict(source=_dummy, imgsz=640, conf=0.25, iou=0.45, verbose=False)
+_ = veto_model.predict(source=_dummy, imgsz=640, conf=0.25, iou=0.45, verbose=False)
+print("[INFO] YOLO warmup complete.")
+# ---------------------------------------------------
+
+
+def gps_key_for(filename):
+    return filename.rsplit(".", 1)[0] + ".txt"
+
+
+def cv2_imread_from_bytes(img_bytes):
+    arr = np.frombuffer(img_bytes, np.uint8)
+    return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+
+def encode_jpg(image_bgr, quality=90):
+    ok, buf = cv2.imencode(".jpg", image_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+    if not ok:
+        raise RuntimeError("Failed to encode JPEG")
+    return buf.tobytes()
+
+
+# --- robust uploader with small backoff (fix HTTP/2 disconnects) ---
+def upload_bytes(bucket, path, data, content_type=None, upsert=True, max_retries=3):
+    file_options = {"upsert": "true" if upsert else "false"}
+    if content_type:
+        file_options["content-type"] = content_type
+
+
+    last_err = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            return supabase.storage.from_(bucket).upload(path, data, file_options=file_options)
+        except Exception as e:
+            last_err = e
+            delay = 0.6 * attempt
+            print(f"[UPLOAD-RETRY] {bucket}/{path} attempt {attempt} failed ({e}); retrying in {delay:.2f}s...")
+            time.sleep(delay)
+    raise last_err
+
+
+def draw_boxes_on_full(full_img, xyxy, conf, color=(0, 0, 255)):
+    vis = full_img.copy()
+    for i, (x1, y1, x2, y2) in enumerate(xyxy):
+        label = f"cig {conf[i]:.2f}"
+        cv2.rectangle(vis, (x1, y1), (x2, y2), color, 2)
+        cv2.putText(vis, label, (x1, max(20, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    return vis
+
+
+def veto_has_cup_or_bottle(img_bgr):
+    """
+    Return True if the veto model finds a 'cup' or 'bottle' in the frame.
+    Looks up class ids by name from the model's .names map.
+    """
+    names = getattr(veto_model, "names", None)
+    if not names:
+        return False
+
+
+    bottle_ids = [i for i, n in names.items() if n == "bottle"]
+    cup_ids    = [i for i, n in names.items() if n == "cup"]
+    if not bottle_ids and not cup_ids:
+        return False
+
+
+    class_filter = []
+    if bottle_ids: class_filter.extend(bottle_ids)
+    if cup_ids:    class_filter.extend(cup_ids)
+
+
+    r = veto_model.predict(
+        source=img_bgr,
+        imgsz=IMGSZ_VETO,
+        conf=CONF_VETO,
+        classes=class_filter,
+        verbose=False
+    )
+    for out in r:
+        if out.boxes is not None and len(out.boxes) > 0:
+            return True
+    return False
+
+
+# ------------------- ROUTES -------------------
+@app.route("/")
+def index():
+    # The page decides whether to show login or dashboard (via /api/me).
+    return render_template("index.html")
+
+
+# ---- Auth (Supabase Auth) ----
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    try:
+        data = request.get_json(force=True)
+        email = data.get("email", "")
+        password = data.get("password", "")
+        auth_resp = supabase.auth.sign_in_with_password({"email": email, "password": password})
+        user = auth_resp.user
+        if not user:
+            return jsonify(ok=False, error="Invalid credentials"), 401
+        session["user_email"] = user.email
+        session["supabase_access_token"] = auth_resp.session.access_token if auth_resp.session else None
+        return jsonify(ok=True, email=user.email)
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)), 500
+
+
+@app.route("/api/logout", methods=["POST"])
+def api_logout():
+    session.pop("user_email", None)
+    session.pop("supabase_access_token", None)
+    return jsonify(ok=True)
+
+
+@app.route("/api/me")
+def api_me():
+    return jsonify(authenticated=("user_email" in session), email=session.get("user_email"))
+
+
+# ------------------- UPLOAD ENDPOINT -------------------
+@app.route("/api/uploads", methods=["POST"])
+def upload_file():
+    try:
+        file = request.files.get("file")
+        gps_json = request.form.get("gps", "{}")
+
+
+        if not file:
+            return jsonify(ok=False, error="No file provided"), 400
+
+
+        filename = file.filename
+        photo_bytes = file.read()
+
+
+        # Upload to pre bucket + GPS (with retry)
+        upload_bytes(PHOTOS_PRE_BUCKET, filename, photo_bytes, content_type=file.mimetype)
+        upload_bytes(GPS_BUCKET, gps_key_for(filename), gps_json.encode("utf-8"),
+                     content_type="text/plain", upsert=True)
+
+
+        # Try to crop; if it fails (first image temp issues etc), fall back gracefully
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_in:
+                tmp_in.write(photo_bytes)
+                tmp_in_path = tmp_in.name
+            x_off, y_off, cropped_img = crop_green_box(tmp_in_path, pad_px=4)
+        except Exception:
+            x_off, y_off, cropped_img = 0, 0, cv2_imread_from_bytes(photo_bytes)
+        finally:
+            try:
+                if 'tmp_in_path' in locals() and os.path.exists(tmp_in_path):
+                    os.remove(tmp_in_path)
+            except Exception:
+                pass
+
+
+        full_img = cv2_imread_from_bytes(photo_bytes)
+
+
+        # 1) Run cigarette model on cropped_img
+        cig_results = cig_model.predict(
+            source=cropped_img,
+            imgsz=IMGSZ_CIG,
+            conf=CONF_CIG,
+            iou=IOU_CIG,
+            verbose=False
+        )
+
+
+        r0 = cig_results[0]
+        has_boxes = (r0.boxes is not None) and (len(r0.boxes) > 0)
+        if not has_boxes:
+            print(f"[DETECTION] {filename} -> no cigarette detected")
+            return jsonify(ok=True, detected=False, detections=0)
+
+
+        boxes = r0.boxes.xyxy.cpu().numpy()
+        confs = r0.boxes.conf.cpu().numpy()
+        clses = r0.boxes.cls.cpu().numpy().astype(int)
+
+
+        mask = (clses == CIG_CLASS_ID)
+        boxes, confs = boxes[mask], confs[mask]
+
+
+        if len(boxes) == 0:
+            print(f"[DETECTION] {filename} -> no cigarette detected (class filter)")
+            return jsonify(ok=True, detected=False, detections=0)
+
+
+        # 2) Veto check on the FULL frame
+        veto_hit = veto_has_cup_or_bottle(full_img)
+        if veto_hit:
+            print(f"[VETO] {filename} -> cup/bottle detected; discarding annotated upload")
+            return jsonify(ok=True, detected=False, vetoed=True, detections=int(len(boxes)))
+
+
+        # 3) No veto -> draw on FULL frame (shift boxes by crop offset) and upload
+        boxes[:, [0, 2]] += x_off
+        boxes[:, [1, 3]] += y_off
+        vis = draw_boxes_on_full(full_img, boxes.astype(int), confs)
+        annotated_jpg = encode_jpg(vis)
+
+
+        upload_bytes(PHOTOS_POST_BUCKET, filename, annotated_jpg, content_type="image/jpeg")
+
+
+        print(f"[DETECTION] {filename} -> detected {len(boxes)} cigarette(s)")
+        return jsonify(ok=True, detected=True, detections=int(len(boxes)))
+
+
+    except Exception as e:
+        print(f"[UPLOAD-ERROR] {e}")
+        return jsonify(ok=False, error=str(e)), 500
+
+
+# ------------------- LIST ENDPOINT -------------------
+@app.route("/api/list")
+def list_items():
+    try:
+        resp = supabase.storage.from_(PHOTOS_POST_BUCKET).list()
+        items = []
+        for obj in resp:
+            name = obj["name"]
+            if name.startswith(".") or name.lower().endswith(".placeholder"):
+                continue
+            url = supabase.storage.from_(PHOTOS_POST_BUCKET).create_signed_url(name, 3600)["signedURL"]
+            gps_key = gps_key_for(name)
+            gps_txt = ""
+            try:
+                gps_data = supabase.storage.from_(GPS_BUCKET).download(gps_key)
+                gps_txt = gps_data.decode("utf-8") if gps_data else ""
+            except Exception:
+                gps_txt = "(No GPS file)"
+            created_at = obj.get("created_at")
+            items.append({"filename": name, "url": url, "gps_text": gps_txt, "created_at": created_at})
+
+
+        items.sort(key=lambda x: (x["created_at"] or "", x["filename"]))
+        return jsonify(ok=True, items=items)
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)), 500
+
+
+# ------------------- DISCARD ENDPOINT -------------------
+@app.route("/api/discard", methods=["DELETE"])
+def discard_item():
+    try:
+        filename = request.args.get("file")
+        if not filename:
+            return jsonify(ok=False, error="Missing filename"), 400
+        supabase.storage.from_(PHOTOS_POST_BUCKET).remove([filename])
+        supabase.storage.from_(GPS_BUCKET).remove([gps_key_for(filename)])
+        print(f"[DELETE] Removed {filename} and its GPS file")
+        return jsonify(ok=True, deleted=filename)
+    except Exception as e:
+        print(f"[DELETE-ERROR] {e}")
+        return jsonify(ok=False, error=str(e)), 500
+
+
+# ------------------- CLEANUP THREAD -------------------
+def cleanup_photos_pre():
+    """Runs every hour to delete all files in photos_pre."""
+    while True:
+        try:
+            resp = supabase.storage.from_(PHOTOS_PRE_BUCKET).list()
+            to_delete = [obj["name"] for obj in resp if not obj["name"].startswith(".")]
+            if to_delete:
+                supabase.storage.from_(PHOTOS_PRE_BUCKET).remove(to_delete)
+                print(f"[CLEANUP] Deleted {len(to_delete)} files from {PHOTOS_PRE_BUCKET}.")
+        except Exception as e:
+            print(f"[CLEANUP ERROR] {e}")
+        time.sleep(3600)
+
+
+threading.Thread(target=cleanup_photos_pre, daemon=True).start()
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080, debug=False, threaded=True)
