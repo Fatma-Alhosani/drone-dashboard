@@ -36,7 +36,7 @@ root/
 |       `-- index.html             <- Web dashboard UI
 |
 `-- rpi/                           <- Raspberry Pi flight-side code
-    |-- README.md                  <- RPi-specific documentation (already done)
+    |-- README.md                  <- RPi-specific documentation 
     `-- mission.py                 <- Captures frames + YOLO + uploads to PC
 ```
 
